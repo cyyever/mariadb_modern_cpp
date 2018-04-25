@@ -10,12 +10,9 @@ namespace sqlite {
 
 	class sqlite_exception: public std::runtime_error {
 	public:
-		sqlite_exception(const char* msg, std::string sql, int code = -1): runtime_error(msg), code(code), sql(sql) {
-		
-		puts(sql.c_str());}
-		sqlite_exception(int code, std::string sql): runtime_error(sqlite3_errstr(code)), code(code), sql(sql) {
-		
-		puts(sql.c_str());}
+		sqlite_exception(const char* msg, std::string sql, int code = -1): runtime_error(msg), code(code), sql(sql) {}
+		sqlite_exception(int code, std::string sql): runtime_error(sqlite3_errstr(code)), code(code), sql(sql) {}
+		sqlite_exception(std::string msg, std::string sql, int code = -1): runtime_error(std::move(msg)), code(code), sql(sql) {}
 		int get_code() const {return code & 0xFF;}
 		int get_extended_code() const {return code;}
 		std::string get_sql() const {return sql;}
@@ -38,12 +35,15 @@ namespace sqlite {
 
 		//Some additional errors are here for the C++ interface
 		class more_rows: public sqlite_exception { using sqlite_exception::sqlite_exception; };
+		class more_result_sets: public sqlite_exception { using sqlite_exception::sqlite_exception; };
+		class no_result_sets: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class no_rows: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class more_statements: public sqlite_exception { using sqlite_exception::sqlite_exception; }; // Prepared statements can only contain one statement
 		class invalid_utf16: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class lack_prepare_arguments: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class more_prepare_arguments: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-
+		class out_of_row_range: public sqlite_exception { using sqlite_exception::sqlite_exception; };
+		class unsupported_column_type : public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		static void throw_mariadb_error(MYSQL* mysql, const std::string &sql = "") {
 		  throw mariadb_exception(mysql, sql);
 		}
