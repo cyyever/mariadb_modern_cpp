@@ -11,15 +11,118 @@
 TEST_CASE("select") {
   sqlite::mariadb_config config;
   config.host = "127.0.0.1";
-  config.user = "root";
+  config.user = "mariadb_modern_cpp_test";
   config.passwd = "123";
-  sqlite::database test_db("mysql", config);
+  sqlite::database test_db("mariadb_modern_cpp_test", config);
 
-  SUBCASE("select without argument") { test_db << "select * from user;"; }
+  SUBCASE("select without argument") {
+    test_db << "select * from mariadb_modern_cpp_test.col_type_test;";
+  }
 
   SUBCASE("select with arguments") {
-    // test_db<<"select * from user where user=?;"<<std::string("root");
-    test_db << "select * from user where user=?;"
-            << "root";
+    test_db << "select * from mariadb_modern_cpp_test.col_type_test where id=?;"
+            << 0;
+  }
+
+  SUBCASE("extract without row") {
+    bool has_exception = false;
+    try {
+      unsigned int val;
+      test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
+                 "where id>1000;" >>
+          val;
+    } catch (const sqlite::errors::no_rows &) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
+  SUBCASE("extract BIGINT UNSIGNED") {
+    unsigned int val;
+    test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == 1);
+  }
+  SUBCASE("extract BIGINT") {
+    int val;
+    test_db << "select int_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == -1);
+  }
+
+  SUBCASE("extract DECIMAL UNSIGNED") {
+    double val;
+    test_db << "select udec_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == 0.3);
+  }
+  SUBCASE("extract DECIMAL") {
+    double val;
+    test_db << "select dec_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == -0.3);
+  }
+
+  SUBCASE("extract DOUBLE UNSIGNED") {
+    double val;
+    test_db << "select udouble_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == 0.3);
+  }
+
+  SUBCASE("extract DOUBLE") {
+    double val;
+    test_db << "select double_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == -0.3);
+  }
+  SUBCASE("extract VARCHAR") {
+    std::string val;
+    test_db << "select varchar_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == "varchar");
+  }
+  SUBCASE("extract CHAR") {
+    std::string val;
+    test_db << "select char_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == "char");
+  }
+  SUBCASE("extract LONGTEXT") {
+    std::string val;
+    test_db << "select longtext_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val == "longtext");
+  }
+  SUBCASE("extract LONGBLOB") {
+    std::vector<std::byte> val;
+    test_db << "select longblob_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+
+    std::vector<std::byte> expected_val;
+    for (auto b : {'l', 'o', 'n', 'g', 'b', 'l', 'o', 'b'}) {
+      expected_val.push_back(static_cast<std::byte>(b));
+    }
+    CHECK(val == expected_val);
   }
 }
