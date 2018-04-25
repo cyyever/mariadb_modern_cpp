@@ -1,7 +1,17 @@
 #pragma once
 
+#if __has_include(<mariadb/mysql.h>)
+#include <mariadb/mysql.h>
+#elif __has_include(<mysql/mysql.h>)
+#include <mysql/mysql.h>
+#define USE_MYSQL
+#else
+#error No mariadb/mysql header found!
+#endif
+
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
@@ -11,17 +21,11 @@
 #include <string>
 #include <tuple>
 
-#include <mariadb/mysql.h>
-#include <sqlite3.h>
-
 #include "mariadb_modern_cpp/errors.h"
 #include "mariadb_modern_cpp/utility/function_traits.h"
 #include "mariadb_modern_cpp/utility/uncaught_exceptions.h"
 
 namespace sqlite {
-
-// std::optional support for NULL values
-template <class T> using optional = std::optional<T>;
 
 class database;
 class database_binder;
@@ -90,6 +94,7 @@ private:
   std::string_view _unprepared_sql_part;
   std::ostringstream _sql_stream;
   MYSQL_ROW row{};
+  unsigned long *lengths{};
   MYSQL_FIELD *fields{};
   unsigned int field_count{};
   utility::UncaughtExceptionDetector _has_uncaught_exception;
@@ -97,9 +102,6 @@ private:
   bool execution_started = false;
 
   void _consume_prepared_sql_part() {
-    if (_unprepared_sql_part.empty()) {
-      return;
-    }
     auto pos = _unprepared_sql_part.find('?');
     if (pos == _unprepared_sql_part.npos) {
       _sql_stream.write(_unprepared_sql_part.data(),
@@ -108,6 +110,10 @@ private:
     } else if (pos != 0) {
       _sql_stream.write(_unprepared_sql_part.data(), pos);
       _unprepared_sql_part.remove_prefix(pos);
+    }
+    if (_unprepared_sql_part.empty()) {
+      execute();
+      return;
     }
   }
 
@@ -131,11 +137,6 @@ private:
       execute();
     }
 
-    if (!mysql_more_results(_db.get())) {
-      throw errors::no_result_sets(
-          "no result sets to extract: exactly 1 result set expected", sql());
-    }
-
     auto result_set = std::shared_ptr<MYSQL_RES>(mysql_store_result(_db.get()),
                                                  [this](MYSQL_RES *ptr) {
                                                    row = {};
@@ -145,7 +146,8 @@ private:
                                                  });
 
     if (!result_set) {
-      errors::throw_mariadb_error(_db.get());
+      throw errors::no_result_sets(
+          "no result sets to extract: exactly 1 result set expected", sql());
     }
 
     auto row_num = mysql_num_rows(result_set.get());
@@ -157,6 +159,7 @@ private:
     }
 
     row = mysql_fetch_row(result_set.get());
+    lengths = mysql_fetch_lengths(result_set.get());
     fields = mysql_fetch_fields(result_set.get());
     field_count = mysql_field_count(_db.get());
     call_back();
@@ -173,13 +176,16 @@ private:
                       std::is_integral<Type>::value ||
                       std::is_same<std::string, Type>::value ||
                       std::is_same<std::u16string, Type>::value ||
-                      std::is_same<sqlite_int64, Type>::value> {};
-  template <typename Type, typename Allocator>
+                      std::is_same<std::vector<std::byte>, Type>::value> {};
+
+  /*
+  template <typename Allocator>
   struct is_mariadb_value<std::vector<Type, Allocator>>
       : public std::integral_constant<
             bool, std::is_floating_point<Type>::value ||
                       std::is_integral<Type>::value ||
                       std::is_same<sqlite_int64, Type>::value> {};
+                      */
 #ifdef MODERN_SQLITE_STD_VARIANT_SUPPORT
   template <typename... Args>
   struct is_mariadb_value<std::variant<Args...>>
@@ -195,7 +201,6 @@ private:
   // Overload instead of specializing function templates
   // (http://www.gotw.ca/publications/mill17.htm)
   friend void get_col_from_db(database_binder &db, int inx, int &val);
-  friend void get_col_from_db(database_binder &db, int inx, sqlite3_int64 &i);
   friend void get_col_from_db(database_binder &db, int inx, float &f);
   friend void get_col_from_db(database_binder &db, int inx, double &d);
   friend void get_col_from_db(database_binder &db, int inx, std::string &s);
@@ -208,10 +213,10 @@ private:
 
   template <typename OptionalT>
   friend database_binder &operator<<(database_binder &db,
-                                     const optional<OptionalT> &val);
+                                     const std::optional<OptionalT> &val);
   template <typename OptionalT>
   friend void get_col_from_db(database_binder &db, int inx,
-                              optional<OptionalT> &o);
+                              std::optional<OptionalT> &o);
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
@@ -235,27 +240,91 @@ private:
 */
 
     auto field_type = fields[idx].type;
-
     auto field_flags = fields[idx].flags;
+
     switch (field_type) {
     case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_SHORT:
     case MYSQL_TYPE_LONG:
     case MYSQL_TYPE_LONGLONG:
     case MYSQL_TYPE_INT24:
-      if (field_flags & UNSIGNED_FLAG) {
-        val = ::strtoull(row[idx], nullptr, 10);
+      if constexpr (std::is_integral_v<Result>) {
+        errno = 0;
+        if (field_flags & UNSIGNED_FLAG) {
+          val = ::strtoull(row[idx], nullptr, 10);
+        } else {
+          val = ::strtoll(row[idx], nullptr, 10);
+        }
+        if (errno != 0) {
+          throw errors::column_conversion(std::string("converting column ") +
+                                              std::to_string(idx) +
+                                              " to integer failed",
+                                          sql());
+        }
+        return;
       } else {
-        val = ::strtoll(row[idx], nullptr, 10);
+        break;
+      }
+    case MYSQL_TYPE_DECIMAL:
+    case MYSQL_TYPE_NEWDECIMAL:
+    case MYSQL_TYPE_FLOAT:
+    case MYSQL_TYPE_DOUBLE:
+      if constexpr (std::is_floating_point_v<Result>) {
+        errno = 0;
+        val = ::strtold(row[idx], nullptr);
+        if (errno != 0) {
+          throw errors::column_conversion(std::string("converting column ") +
+                                              std::to_string(idx) +
+                                              " to floating point failed",
+                                          sql());
+        }
+        return;
+      } else {
+        break;
+      }
+    case MYSQL_TYPE_VARCHAR:
+    case MYSQL_TYPE_VAR_STRING:
+    case MYSQL_TYPE_STRING:
+      if constexpr (std::is_same_v<Result, std::string>) {
+        val = std::string(row[idx], lengths[idx]);
+        return;
+      } else {
+        break;
+      }
+
+    case MYSQL_TYPE_TINY_BLOB:
+    case MYSQL_TYPE_MEDIUM_BLOB:
+    case MYSQL_TYPE_LONG_BLOB:
+    case MYSQL_TYPE_BLOB:
+      if constexpr (std::is_same_v<Result, std::string>) {
+        /*
+       To distinguish between binary and nonbinary data for string data types,
+       check whether the charsetnr value is 63. If so, the character set is
+       binary, which indicates binary rather than nonbinary data. This enables
+       you to distinguish BINARY from CHAR, VARBINARY from VARCHAR, and the BLOB
+       types from the TEXT types.
+
+       see https://dev.mysql.com/doc/refman/8.0/en/c-api-data-structures.html
+       */
+
+        if (fields[idx].charsetnr != 63) {
+          val = std::string(row[idx], lengths[idx]);
+          return;
+        }
+      } else if constexpr (std::is_same_v<Result, std::vector<std::byte>>) {
+        auto byte_ptr = reinterpret_cast<std::byte *>(row[idx]);
+        val = std::vector<std::byte>(byte_ptr, byte_ptr + lengths[idx]);
+        return;
       }
       break;
     default:
-      throw errors::unsupported_column_type(
-          std::string("column ") + std::to_string(idx) + " type " +
-              std::to_string(field_type) + " is not supported",
-          sql());
       break;
     }
+
+    throw errors::unsupported_column_type(
+        std::string("column ") + std::to_string(idx) + " type " +
+            std::to_string(field_type) + " is not supported",
+        sql());
   }
 
 public:
@@ -274,8 +343,7 @@ public:
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
   operator>>(Result &value) {
-    this->_extract_single_value(
-        [&value, this] { get_col_from_db(*this, 0, value); });
+    this->_extract_single_value([&value, this] { get_col_from_row(0, value); });
   }
 
   /*
@@ -368,7 +436,7 @@ public:
     return *this << std::string(sql);
   }
 
-  auto connection() -> auto const { return _db; }
+  auto connection() const -> auto { return _db; }
 
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
 };
@@ -408,11 +476,11 @@ public:
 template <typename Argument>
 inline database_binder &operator<<(database_binder &db, Argument &&val) {
 
-  if constexpr (std::is_same_v<std::remove_reference<Argument>::type,
+  if constexpr (std::is_same_v<typename std::remove_reference<Argument>::type,
                                std::string> ||
-                std::is_same_v<std::remove_reference<Argument>::type,
+                std::is_same_v<typename std::remove_reference<Argument>::type,
                                std::u16string> ||
-                std::is_same_v<std::remove_reference<Argument>::type,
+                std::is_same_v<typename std::remove_reference<Argument>::type,
                                std::u32string>) {
     return append_string_argument(db, val.c_str(), val.size());
   } else {
@@ -600,7 +668,7 @@ inline void get_val_from_db(sqlite3_value *value, Integral &val) {
 // std::optional support for NULL values
 template <typename OptionalT>
 inline database_binder &operator<<(database_binder &db,
-                                   const optional<OptionalT> &val) {
+                                   const std::optional<OptionalT> &val) {
   if (val) {
     return db << std::move(*val);
   } else {
@@ -609,7 +677,7 @@ inline database_binder &operator<<(database_binder &db,
 }
 template <typename OptionalT>
 inline void store_result_in_db(sqlite3_context *db,
-                               const optional<OptionalT> &val) {
+                               const std::optional<OptionalT> &val) {
   if (val) {
     store_result_in_db(db, *val);
   }
@@ -618,7 +686,7 @@ inline void store_result_in_db(sqlite3_context *db,
 
 template <typename OptionalT>
 inline void get_col_from_db(database_binder &db, int inx,
-                            optional<OptionalT> &o) {
+                            std::optional<OptionalT> &o) {
   /*
         if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
                 o.reset();
@@ -630,7 +698,7 @@ inline void get_col_from_db(database_binder &db, int inx,
         */
 }
 template <typename OptionalT>
-inline void get_val_from_db(sqlite3_value *value, optional<OptionalT> &o) {
+inline void get_val_from_db(sqlite3_value *value, std::optional<OptionalT> &o) {
   if (sqlite3_value_type(value) == SQLITE_NULL) {
     o.reset();
   } else {
