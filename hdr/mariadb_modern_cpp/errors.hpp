@@ -4,9 +4,8 @@
 #include <string>
 
 #include <mariadb/mysql.h>
-#include <sqlite3.h>
 
-namespace sqlite {
+namespace  mariadb{
 class mariadb_exception : public std::runtime_error {
 public:
   mariadb_exception(const char *msg, std::string sql = "")
@@ -58,4 +57,4 @@ class can_not_hold_null : public mariadb_exception {
   using mariadb_exception::mariadb_exception;
 };
 } // namespace exceptions
-} // namespace sqlite
+}

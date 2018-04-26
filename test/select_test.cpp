@@ -11,11 +11,11 @@
 #include "../hdr/mariadb_modern_cpp.hpp"
 
 TEST_CASE("select") {
-  sqlite::mariadb_config config;
+  mariadb::mariadb_config config;
   config.host = "127.0.0.1";
   config.user = "mariadb_modern_cpp_test";
   config.passwd = "123";
-  sqlite::database test_db("mariadb_modern_cpp_test", config);
+  mariadb::database test_db("mariadb_modern_cpp_test", config);
 
   SUBCASE("select without argument") {
     test_db << "select * from mariadb_modern_cpp_test.col_type_test;";
@@ -33,7 +33,7 @@ TEST_CASE("select") {
       test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
                  "where id>1000;" >>
           val;
-    } catch (const sqlite::exceptions::no_rows &) {
+    } catch (const mariadb::exceptions::no_rows &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -137,7 +137,7 @@ TEST_CASE("select") {
                  "where id=?;"
               << 1 >>
           val;
-    } catch (const sqlite::exceptions::can_not_hold_null &) {
+    } catch (const mariadb::exceptions::can_not_hold_null &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -152,7 +152,7 @@ TEST_CASE("select") {
                  "where id=?;"
               << 1 >>
           val;
-    } catch (const sqlite::exceptions::unsupported_column_type &) {
+    } catch (const mariadb::exceptions::unsupported_column_type &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -209,7 +209,7 @@ TEST_CASE("select") {
                  "where id=?;"
               << 1 >>
           std::tie(val, val2);
-    } catch (const sqlite::exceptions::out_of_row_range &) {
+    } catch (const mariadb::exceptions::out_of_row_range &) {
       has_exception = true;
     }
     CHECK(has_exception);

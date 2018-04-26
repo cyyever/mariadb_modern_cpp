@@ -22,10 +22,10 @@
 #include <tuple>
 #include <type_traits>
 
-#include "mariadb_modern_cpp/errors.h"
-#include "mariadb_modern_cpp/utility/function_traits.h"
+#include "mariadb_modern_cpp/errors.hpp"
+#include "mariadb_modern_cpp/utility/function_traits.hpp"
 
-namespace sqlite {
+namespace mariadb {
 
 class database;
 class database_binder;
@@ -534,4 +534,4 @@ database_binder &&operator<<(database_binder &&db, const T &val) {
   return std::move(db);
 }
 
-} // namespace sqlite
+} // namespace mariadb
