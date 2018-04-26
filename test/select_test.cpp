@@ -4,9 +4,9 @@
  * \brief 测试cfg
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest.h>
-#include <cstddef>
 #include <cmath>
+#include <cstddef>
+#include <doctest.h>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
 
@@ -29,11 +29,11 @@ TEST_CASE("select") {
   SUBCASE("extract without row") {
     bool has_exception = false;
     try {
-      unsigned int val;
+      uint64_t val;
       test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
                  "where id>1000;" >>
           val;
-    } catch (const sqlite::errors::no_rows &) {
+    } catch (const sqlite::exceptions::no_rows &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -57,38 +57,38 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract DECIMAL UNSIGNED") {
-   long double val;
+    long double val;
     test_db << "select udec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK( std::fabs( val-0.3)<0.0000001);
+    CHECK(std::fabs(val - 0.3) < 0.0000001);
   }
   SUBCASE("extract DECIMAL") {
-   long double val;
+    long double val;
     test_db << "select dec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK( std::fabs( val+0.3)<0.0000001);
+    CHECK(std::fabs(val + 0.3) < 0.0000001);
   }
 
   SUBCASE("extract DOUBLE UNSIGNED") {
-   long double val;
+    long double val;
     test_db << "select udouble_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK( std::fabs( val-0.3)<0.0000001);
+    CHECK(std::fabs(val - 0.3) < 0.0000001);
   }
 
   SUBCASE("extract DOUBLE") {
-   long double val;
+    long double val;
     test_db << "select double_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK( std::fabs( val+0.3)<0.0000001);
+    CHECK(std::fabs(val + 0.3) < 0.0000001);
   }
   SUBCASE("extract VARCHAR") {
     std::string val;
@@ -132,12 +132,12 @@ TEST_CASE("select") {
   SUBCASE("can't hold NULL") {
     bool has_exception = false;
     try {
-      int val;
+      int64_t val;
       test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
-	"where id=?;"
-	<< 1 >>
-	val;
-    } catch (const sqlite::errors::can_not_hold_null &) {
+                 "where id=?;"
+              << 1 >>
+          val;
+    } catch (const sqlite::exceptions::can_not_hold_null &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -146,12 +146,13 @@ TEST_CASE("select") {
   SUBCASE("false optional type") {
     bool has_exception = false;
     try {
-    std::optional<int> val;
-      test_db << "select varchar_col from mariadb_modern_cpp_test.col_type_test "
-	"where id=?;"
-	<< 1 >>
-	val;
-    } catch (const sqlite::errors::unsupported_column_type&) {
+      std::optional<int64_t> val;
+      test_db << "select varchar_col from "
+                 "mariadb_modern_cpp_test.col_type_test "
+                 "where id=?;"
+              << 1 >>
+          val;
+    } catch (const sqlite::exceptions::unsupported_column_type &) {
       has_exception = true;
     }
     CHECK(has_exception);
@@ -159,7 +160,7 @@ TEST_CASE("select") {
 
   SUBCASE("extract NULL") {
     std::optional<std::string> val;
-    
+
     test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -170,43 +171,47 @@ TEST_CASE("select") {
   SUBCASE("extract NOT NULL") {
     std::optional<std::string> val;
     CHECK(!val.has_value());
- 
-    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? where id=?;"<<"not null"<<1;
+
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
+               "where id=?;"
+            << "not null" << 1;
 
     test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
     CHECK(val.has_value());
-    CHECK(val.value()=="not null");
-    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? where id=?;"<<nullptr<<1;
+    CHECK(val.value() == "not null");
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
+               "where id=?;"
+            << nullptr << 1;
   }
-
 
   SUBCASE("extract LONGTEXT and NULL by std::tie") {
     std::string val;
     std::optional<std::string> val2;
-    test_db << "select longtext_col,null_col from mariadb_modern_cpp_test.col_type_test "
+    test_db << "select longtext_col,null_col from "
+               "mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
-            << 1 >> std::tie(val,val2);
-        val;
+            << 1 >>
+        std::tie(val, val2);
     CHECK(val == "longtext");
     CHECK(!val2.has_value());
   }
 
   SUBCASE("std::tie with less column selected") {
-    bool has_exception=false;
+    bool has_exception = false;
     try {
-    std::string val;
-    std::optional<std::string> val2;
-    test_db << "select longtext_col from mariadb_modern_cpp_test.col_type_test "
-               "where id=?;"
-            << 1 >> std::tie(val,val2);
-        val;
-    } catch (const sqlite::errors::out_of_row_range &) {
+      std::string val;
+      std::optional<std::string> val2;
+      test_db << "select longtext_col from "
+                 "mariadb_modern_cpp_test.col_type_test "
+                 "where id=?;"
+              << 1 >>
+          std::tie(val, val2);
+    } catch (const sqlite::exceptions::out_of_row_range &) {
       has_exception = true;
     }
     CHECK(has_exception);
   }
-
 }

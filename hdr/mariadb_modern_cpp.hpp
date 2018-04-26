@@ -14,7 +14,6 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdlib>
-#include <ctime>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -25,7 +24,6 @@
 
 #include "mariadb_modern_cpp/errors.h"
 #include "mariadb_modern_cpp/utility/function_traits.h"
-#include "mariadb_modern_cpp/utility/uncaught_exceptions.h"
 
 namespace sqlite {
 
@@ -53,7 +51,6 @@ public:
     }
 
     auto full_sql = _sql_stream.str();
-    std::cout << "full_sql is " << full_sql << std::endl;
 
     if (mysql_real_query(_db.get(), full_sql.c_str(), full_sql.size()) != 0) {
       throw mariadb_exception(_db.get(), full_sql);
@@ -85,7 +82,6 @@ private:
   unsigned long *lengths{};
   MYSQL_FIELD *fields{};
   unsigned int field_count{};
-  utility::UncaughtExceptionDetector _has_uncaught_exception;
 
   bool execution_started = false;
 
@@ -183,11 +179,6 @@ private:
   struct is_mariadb_value<std::optional<OptionalT>>
       : public std::integral_constant<bool,
                                       is_mariadb_value<OptionalT>::value> {};
-#ifdef MODERN_SQLITE_STD_VARIANT_SUPPORT
-  template <typename... Args>
-  struct is_mariadb_value<std::variant<Args...>>
-      : public std::integral_constant<bool, true> {};
-#endif
 
   template <typename Test, template <typename...> class Ref>
   struct is_specialization_of : std::false_type {};
@@ -341,7 +332,7 @@ public:
   }
 
   ~database_binder() noexcept(false) {
-    if (!used() && !_has_uncaught_exception) {
+    if (!used() && std::uncaught_exceptions() == 0) {
       execute();
       used(true);
     }
@@ -357,7 +348,6 @@ public:
             bool Last = (std::tuple_size<Tuple>::value == Element)>
   struct tuple_iterate {
     static void iterate(Tuple &t, database_binder &db) {
-      std::cout << "Element is" << Element << std::endl;
       db.get_col_from_row(Element, std::get<Element>(t));
       tuple_iterate<Tuple, Element + 1>::iterate(t, db);
     }
