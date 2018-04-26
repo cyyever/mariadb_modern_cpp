@@ -5,6 +5,8 @@
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>
+#include <cstddef>
+#include <cmath>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
 
@@ -38,7 +40,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract BIGINT UNSIGNED") {
-    unsigned int val;
+    uint64_t val;
     test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -46,7 +48,7 @@ TEST_CASE("select") {
     CHECK(val == 1);
   }
   SUBCASE("extract BIGINT") {
-    int val;
+    int64_t val;
     test_db << "select int_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -55,38 +57,38 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract DECIMAL UNSIGNED") {
-    double val;
+   long double val;
     test_db << "select udec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK(val == 0.3);
+    CHECK( std::fabs( val-0.3)<0.0000001);
   }
   SUBCASE("extract DECIMAL") {
-    double val;
+   long double val;
     test_db << "select dec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK(val == -0.3);
+    CHECK( std::fabs( val+0.3)<0.0000001);
   }
 
   SUBCASE("extract DOUBLE UNSIGNED") {
-    double val;
+   long double val;
     test_db << "select udouble_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK(val == 0.3);
+    CHECK( std::fabs( val-0.3)<0.0000001);
   }
 
   SUBCASE("extract DOUBLE") {
-    double val;
+   long double val;
     test_db << "select double_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
         val;
-    CHECK(val == -0.3);
+    CHECK( std::fabs( val+0.3)<0.0000001);
   }
   SUBCASE("extract VARCHAR") {
     std::string val;
@@ -179,4 +181,32 @@ TEST_CASE("select") {
     CHECK(val.value()=="not null");
     test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? where id=?;"<<nullptr<<1;
   }
+
+
+  SUBCASE("extract LONGTEXT and NULL by std::tie") {
+    std::string val;
+    std::optional<std::string> val2;
+    test_db << "select longtext_col,null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >> std::tie(val,val2);
+        val;
+    CHECK(val == "longtext");
+    CHECK(!val2.has_value());
+  }
+
+  SUBCASE("std::tie with less column selected") {
+    bool has_exception=false;
+    try {
+    std::string val;
+    std::optional<std::string> val2;
+    test_db << "select longtext_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >> std::tie(val,val2);
+        val;
+    } catch (const sqlite::errors::out_of_row_range &) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
 }
