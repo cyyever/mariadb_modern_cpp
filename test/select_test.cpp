@@ -26,6 +26,17 @@ TEST_CASE("select") {
             << 0;
   }
 
+  SUBCASE("select lacking argument") {
+    bool has_exception = false;
+    try {
+      test_db
+          << "select * from mariadb_modern_cpp_test.col_type_test where id=?;";
+    } catch (const mariadb::exceptions::lack_prepare_arguments &) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
   SUBCASE("extract without row") {
     bool has_exception = false;
     try {

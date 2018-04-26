@@ -20,3 +20,16 @@ TEST_CASE("connect with passwd") {
     CHECK_MESSAGE(false, err_msg);
   }
 }
+
+TEST_CASE("connect without passwd") {
+  bool has_exception = false;
+  try {
+    mariadb::mariadb_config config;
+    config.host = "127.0.0.1";
+    config.user = "mariadb_modern_cpp_test";
+    mariadb::database test_db("mariadb_modern_cpp_test", config);
+  } catch (const mariadb::mariadb_exception &e) {
+    has_exception = true;
+  }
+  CHECK(has_exception);
+}
