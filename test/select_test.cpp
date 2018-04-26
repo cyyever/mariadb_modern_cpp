@@ -37,6 +37,24 @@ TEST_CASE("select") {
     CHECK(has_exception);
   }
 
+  SUBCASE("extract with more than one row") {
+    bool has_exception = false;
+    try {
+      std::string name;
+      test_db << "CREATE TABLE IF NOT EXISTS mariadb_modern_cpp_test.tmp_table "
+                 "(name TEXT);";
+      test_db << "INSERT INTO tmp_table VALUES (?)"
+              << "aa";
+      test_db << "INSERT INTO tmp_table VALUES (?)"
+              << "bb";
+      test_db << "select name from mariadb_modern_cpp_test.tmp_table;" >> name;
+    } catch (const mariadb::exceptions::more_rows &) {
+      has_exception = true;
+    }
+    test_db << "drop TABLE mariadb_modern_cpp_test.tmp_table;";
+    CHECK(has_exception);
+  }
+
   SUBCASE("extract without row") {
     bool has_exception = false;
     try {
@@ -221,6 +239,40 @@ TEST_CASE("select") {
               << 1 >>
           std::tie(val, val2);
     } catch (const mariadb::exceptions::out_of_row_range &) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
+  SUBCASE("extract LONGTEXT and NULL by callback") {
+    test_db << "select longtext_col,null_col from "
+               "mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+
+        [](std::string val, std::optional<std::string> val2) {
+          CHECK(val == "longtext");
+          CHECK(!val2.has_value());
+        };
+  }
+
+  SUBCASE("used and reexecutes sql") {
+    auto ps = test_db
+              << "select count(*) from mariadb_modern_cpp_test.col_type_test;";
+    ps.used(true);
+    size_t count = 0;
+    ps.execute();
+    ps >> count;
+    CHECK(count == 1);
+  }
+
+  SUBCASE("disable multistatement") {
+    bool has_exception = false;
+    try {
+      test_db << "select count(*) from "
+                 "mariadb_modern_cpp_test.col_type_test;select count(*) from "
+                 "mariadb_modern_cpp_test.col_type_test;";
+    } catch (const mariadb::mariadb_exception &e) {
       has_exception = true;
     }
     CHECK(has_exception);

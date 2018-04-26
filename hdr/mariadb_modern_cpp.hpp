@@ -203,7 +203,7 @@ private:
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
-  get_col_from_row(unsigned int idx, Result &val, bool check_null = true) {
+  _get_col_from_row(unsigned int idx, Result &val, bool check_null = true) {
 
     if (idx >= field_count) {
       throw exceptions::out_of_row_range(
@@ -223,7 +223,7 @@ private:
         return;
       } else {
         typename Result::value_type real_value;
-        get_col_from_row(idx, real_value, false);
+        _get_col_from_row(idx, real_value, false);
         val = std::move(real_value);
         return;
       }
@@ -341,14 +341,15 @@ public:
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
   operator>>(Result &value) {
-    this->_extract_single_value([&value, this] { get_col_from_row(0, value); });
+    this->_extract_single_value(
+        [&value, this] { _get_col_from_row(0, value); });
   }
 
   template <typename Tuple, int Element = 0,
             bool Last = (std::tuple_size<Tuple>::value == Element)>
   struct tuple_iterate {
     static void iterate(Tuple &t, database_binder &db) {
-      db.get_col_from_row(Element, std::get<Element>(t));
+      db._get_col_from_row(Element, std::get<Element>(t));
       tuple_iterate<Tuple, Element + 1>::iterate(t, db);
     }
   };
@@ -363,6 +364,40 @@ public:
       tuple_iterate<std::tuple<Types...>>::iterate(values, *this);
     });
   }
+
+  template <std::size_t Count> class binder {
+  private:
+    template <typename Function, std::size_t Index>
+    using nth_argument_type =
+        typename utility::function_traits<Function>::template argument<Index>;
+
+  public:
+    // `Boundary` needs to be defaulted to `Count` so that the `run` function
+    // template is not implicitly instantiated on class template instantiation.
+    // Look up section 14.7.1 _Implicit instantiation_ of the ISO C++14 Standard
+    // and the
+    // [dicussion](https://github.com/aminroosta/sqlite_modern_cpp/issues/8) on
+    // Github.
+
+    template <typename Function, typename... Values,
+              std::size_t Boundary = Count>
+    static typename std::enable_if<(sizeof...(Values) < Boundary), void>::type
+    run(database_binder &db, Function &&function, Values &&... values) {
+      typename std::remove_cv<typename std::remove_reference<
+          nth_argument_type<Function, sizeof...(Values)>>::type>::type value{};
+      db._get_col_from_row(sizeof...(Values), value);
+
+      run<Function>(db, function, std::forward<Values>(values)...,
+                    std::move(value));
+    }
+
+    template <typename Function, typename... Values,
+              std::size_t Boundary = Count>
+    static typename std::enable_if<(sizeof...(Values) == Boundary), void>::type
+    run(database_binder &, Function &&function, Values &&... values) {
+      function(std::move(values)...);
+    }
+  };
 
   template <typename Function>
   typename std::enable_if<!is_mariadb_value<Function>::value, void>::type
@@ -420,38 +455,6 @@ public:
   auto connection() const -> auto { return _db; }
 
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
-};
-
-template <std::size_t Count> class binder {
-private:
-  template <typename Function, std::size_t Index>
-  using nth_argument_type =
-      typename utility::function_traits<Function>::template argument<Index>;
-
-public:
-  // `Boundary` needs to be defaulted to `Count` so that the `run` function
-  // template is not implicitly instantiated on class template instantiation.
-  // Look up section 14.7.1 _Implicit instantiation_ of the ISO C++14 Standard
-  // and the
-  // [dicussion](https://github.com/aminroosta/sqlite_modern_cpp/issues/8) on
-  // Github.
-
-  template <typename Function, typename... Values, std::size_t Boundary = Count>
-  static typename std::enable_if<(sizeof...(Values) < Boundary), void>::type
-  run(database_binder &db, Function &&function, Values &&... values) {
-    typename std::remove_cv<typename std::remove_reference<
-        nth_argument_type<Function, sizeof...(Values)>>::type>::type value{};
-    // get_col_from_db(db, sizeof...(Values), value);
-
-    run<Function>(db, function, std::forward<Values>(values)...,
-                  std::move(value));
-  }
-
-  template <typename Function, typename... Values, std::size_t Boundary = Count>
-  static typename std::enable_if<(sizeof...(Values) == Boundary), void>::type
-  run(database_binder &, Function &&function, Values &&... values) {
-    function(std::move(values)...);
-  }
 };
 
 template <typename Argument>
