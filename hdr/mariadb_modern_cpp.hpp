@@ -27,6 +27,26 @@
 
 namespace mariadb {
 
+template <typename Test, template <typename...> class Ref>
+struct is_specialization_of : std::false_type {};
+
+template <template <typename...> class Ref, typename... Args>
+struct is_specialization_of<Ref<Args...>, Ref> : std::true_type {};
+
+template <typename Type>
+struct is_mariadb_value
+    : public std::integral_constant<
+          bool, std::is_floating_point<Type>::value ||
+                    std::is_integral<Type>::value ||
+                    std::is_same<std::string, Type>::value ||
+                    std::is_same<std::u16string, Type>::value ||
+                    std::is_same<std::vector<std::byte>, Type>::value> {};
+
+template <typename OptionalT>
+struct is_mariadb_value<std::optional<OptionalT>>
+    : public std::integral_constant<bool, is_mariadb_value<OptionalT>::value> {
+};
+
 class database;
 class database_binder;
 
@@ -166,40 +186,8 @@ private:
     }
   }
 
-  template <typename Type>
-  struct is_mariadb_value
-      : public std::integral_constant<
-            bool, std::is_floating_point<Type>::value ||
-                      std::is_integral<Type>::value ||
-                      std::is_same<std::string, Type>::value ||
-                      std::is_same<std::u16string, Type>::value ||
-                      std::is_same<std::vector<std::byte>, Type>::value> {};
-
-  template <typename OptionalT>
-  struct is_mariadb_value<std::optional<OptionalT>>
-      : public std::integral_constant<bool,
-                                      is_mariadb_value<OptionalT>::value> {};
-
-  template <typename Test, template <typename...> class Ref>
-  struct is_specialization_of : std::false_type {};
-
-  template <template <typename...> class Ref, typename... Args>
-  struct is_specialization_of<Ref<Args...>, Ref> : std::true_type {};
-
-  /* for nullptr & unique_ptr support */
-  friend database_binder &operator<<(database_binder &db, std::nullptr_t);
-  template <typename T> friend T operator++(database_binder &db, int);
-  // Overload instead of specializing function templates
-  // (http://www.gotw.ca/publications/mill17.htm)
   friend database_binder &append_string_argument(database_binder &db,
                                                  const char *str, size_t size);
-
-  template <typename Argument>
-  friend database_binder &operator<<(database_binder &db, Argument &&val);
-
-  template <typename OptionalT>
-  friend database_binder &operator<<(database_binder &db,
-                                     const std::optional<OptionalT> &val);
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
@@ -407,6 +395,86 @@ public:
     this->_extract(
         [&func, this]() { binder<traits::arity>::run(*this, func); });
   }
+
+  // Convert char* to string to trigger op<<(..., const std::string )
+  template <std::size_t N>
+  inline database_binder &operator<<(const char (&STR)[N]) {
+    return append_string_argument(STR, N - 1);
+  }
+
+  template <typename Argument>
+
+  //,typename = typename  std::enable_if<is_mariadb_value<typename
+  //std::remove_cv<typename
+  //std::remove_reference<Argument>::type>::type>::value, database_binder
+  //&>::type >
+
+  //,typename =  typename std::enable_if<is_mariadb_value<Argument>::value,
+  //void>::type > inline
+
+  // typename std::enable_if<is_mariadb_value<typename std::remove_cv<typename
+  // std::remove_reference<Argument>::type>::type>::value, database_binder
+  // &>::type
+
+  database_binder &operator<<(Argument &&val) {
+
+    // if constexpr (!is_mariadb_value<typename std::remove_cv<typename
+    // std::remove_reference<Argument>::type>::type>::value) {
+    static_assert(
+
+        is_mariadb_value<typename std::remove_cv<
+            typename std::remove_reference<Argument>::type>::type>::value,
+        "unsupported argument type");
+
+    //}
+
+    if constexpr (std::is_same_v<typename std::remove_reference<Argument>::type,
+                                 std::string>) {
+      return append_string_argument(val.c_str(), val.size());
+    }
+
+    if (_unprepared_sql_part.empty()) {
+      throw exceptions::more_prepare_arguments(
+          "no extra arguments needed to prepare sql", _sql);
+    }
+
+    else if constexpr (is_specialization_of<typename std::remove_cv<
+                                                typename std::remove_reference<
+                                                    Argument>::type>::type,
+                                            std::optional>::value) {
+      if (val.has_value()) {
+        return (*this) << (*val);
+      } else {
+        _sql_stream << "NULL";
+      }
+    } else {
+      _sql_stream << std::forward<Argument>(val);
+    }
+
+    _unprepared_sql_part.remove_prefix(1);
+    _consume_prepared_sql_part();
+    return (*this);
+  }
+
+  database_binder &append_string_argument(const char *str, size_t size) {
+
+    if (_unprepared_sql_part.empty()) {
+      throw exceptions::more_prepare_arguments(
+          "no extra arguments needed to prepare sql", _sql);
+    }
+
+    std::string escaped_str(size * 2 + 1, '\0');
+    auto real_size =
+        mysql_real_escape_string(_db.get(), escaped_str.data(), str, size);
+    escaped_str.resize(real_size);
+
+    _sql_stream << '"';
+    _sql_stream.write(escaped_str.data(), escaped_str.size());
+    _sql_stream << '"';
+    _unprepared_sql_part.remove_prefix(1);
+    _consume_prepared_sql_part();
+    return (*this);
+  }
 };
 
 struct mariadb_config {
@@ -415,7 +483,6 @@ struct mariadb_config {
   std::string user;
   std::string passwd;
   std::string unix_socket;
-  unsigned long connect_flags{CLIENT_FOUND_ROWS};
 };
 
 class database {
@@ -434,7 +501,7 @@ public:
         tmp, config.host.c_str(), config.user.c_str(), config.passwd.c_str(),
         db_name.c_str(), config.port,
         config.unix_socket.empty() ? nullptr : config.unix_socket.c_str(),
-        config.connect_flags);
+        CLIENT_FOUND_ROWS);
     _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
@@ -448,86 +515,10 @@ public:
     return database_binder(_db, sql);
   }
 
-  database_binder operator<<(const char *sql) {
-    return *this << std::string(sql);
-  }
-
   auto connection() const -> auto { return _db; }
 
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
 };
-
-template <typename Argument>
-inline database_binder &operator<<(database_binder &db, Argument &&val) {
-
-  if constexpr (std::is_same_v<typename std::remove_reference<Argument>::type,
-                               std::string> ||
-                std::is_same_v<typename std::remove_reference<Argument>::type,
-                               std::u16string> ||
-                std::is_same_v<typename std::remove_reference<Argument>::type,
-                               std::u32string>) {
-    return append_string_argument(db, val.c_str(), val.size());
-  } else {
-
-    if (db._unprepared_sql_part.empty()) {
-      throw exceptions::more_prepare_arguments(
-          "no extra arguments needed to prepare sql", db._sql);
-    }
-    db._sql_stream << std::forward<Argument>(val);
-    db._unprepared_sql_part.remove_prefix(1);
-    db._consume_prepared_sql_part();
-    return db;
-  }
-}
-/* for nullptr support */
-inline database_binder &operator<<(database_binder &db, std::nullptr_t) {
-  if (db._unprepared_sql_part.empty()) {
-    throw exceptions::more_prepare_arguments(
-        "no extra arguments needed to prepare sql", db._sql);
-  }
-  db._sql_stream << "NULL";
-  db._unprepared_sql_part.remove_prefix(1);
-  db._consume_prepared_sql_part();
-  return db;
-}
-
-// Convert char* to string to trigger op<<(..., const std::string )
-template <std::size_t N>
-inline database_binder &operator<<(database_binder &db, const char (&STR)[N]) {
-  return append_string_argument(db, STR, N - 1);
-}
-
-inline database_binder &append_string_argument(database_binder &db,
-                                               const char *str, size_t size) {
-
-  if (db._unprepared_sql_part.empty()) {
-    throw exceptions::more_prepare_arguments(
-        "no extra arguments needed to prepare sql", db._sql);
-  }
-
-  std::string escaped_str(size * 2 + 1, '\0');
-  auto real_size =
-      mysql_real_escape_string(db._db.get(), escaped_str.data(), str, size);
-  escaped_str.resize(real_size);
-
-  db._sql_stream << '"';
-  db._sql_stream.write(escaped_str.data(), escaped_str.size());
-  db._sql_stream << '"';
-  db._unprepared_sql_part.remove_prefix(1);
-  db._consume_prepared_sql_part();
-  return db;
-}
-
-// std::optional support for NULL values
-template <typename OptionalT>
-inline database_binder &operator<<(database_binder &db,
-                                   const std::optional<OptionalT> &val) {
-  if (val) {
-    return db << std::move(*val);
-  } else {
-    return db << nullptr;
-  }
-}
 
 // Convert the rValue binder to a reference and call first op<<, its needed for
 // the call that creates the binder (be carefull of recursion here!)
