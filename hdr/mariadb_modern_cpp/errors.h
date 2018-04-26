@@ -1,55 +1,61 @@
 #pragma once
 
-#include <string>
 #include <stdexcept>
+#include <string>
 
-#include <sqlite3.h>
 #include <mariadb/mysql.h>
+#include <sqlite3.h>
 
 namespace sqlite {
+class mariadb_exception : public std::runtime_error {
+public:
+  mariadb_exception(const char *msg, std::string sql = "")
+      : runtime_error(msg), _sql(std::move(sql)) {}
+  mariadb_exception(std::string msg, std::string sql = "")
+      : runtime_error(std::move(msg)), _sql(std::move(sql)) {}
+  mariadb_exception(MYSQL *mysql, std::string sql = "")
+      : runtime_error(mysql_error(mysql)), _sql(std::move(sql)) {}
+  const std::string &get_sql() const { return _sql; }
 
-	class sqlite_exception: public std::runtime_error {
-	public:
-		sqlite_exception(const char* msg, std::string sql, int code = -1): runtime_error(msg), code(code), sql(sql) {}
-		sqlite_exception(int code, std::string sql): runtime_error(sqlite3_errstr(code)), code(code), sql(sql) {}
-		sqlite_exception(std::string msg, std::string sql, int code = -1): runtime_error(std::move(msg)), code(code), sql(sql) {}
-		int get_code() const {return code & 0xFF;}
-		int get_extended_code() const {return code;}
-		std::string get_sql() const {return sql;}
-	private:
-		int code{0};
-		std::string sql;
-	};
+private:
+  std::string _sql = "";
+};
 
-	class mariadb_exception: public std::runtime_error {
-	public:
-		mariadb_exception(MYSQL* mysql, std::string sql): runtime_error(mysql_error(mysql)), sql(sql),code(mysql_errno(mysql)) {}
-		std::string get_sql() const {return sql;}
-		int get_code() const {return code;}
-	private:
-		std::string sql;
-		int code;
-	};
+namespace exceptions {
 
-	namespace errors {
-
-		//Some additional errors are here for the C++ interface
-		class more_rows: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class more_result_sets: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class no_result_sets: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class no_rows: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class more_statements: public sqlite_exception { using sqlite_exception::sqlite_exception; }; // Prepared statements can only contain one statement
-		class invalid_utf16: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class lack_prepare_arguments: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class more_prepare_arguments: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class out_of_row_range: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class unsupported_column_type : public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class column_conversion: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		class can_not_hold_null: public sqlite_exception { using sqlite_exception::sqlite_exception; };
-		static void throw_mariadb_error(MYSQL* mysql, const std::string &sql = "") {
-		  throw mariadb_exception(mysql, sql);
-		}
-
-	}
-	namespace exceptions = errors;
-}
+// Some additional errors are here for the C++ interface
+class more_rows : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class no_rows : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class more_result_sets : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class no_result_sets : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class more_statements : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+}; // Prepared statements can only contain one statement
+class lack_prepare_arguments : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class more_prepare_arguments : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class out_of_row_range : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class unsupported_column_type : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class column_conversion : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+class can_not_hold_null : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
+} // namespace exceptions
+} // namespace sqlite

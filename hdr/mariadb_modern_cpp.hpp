@@ -46,7 +46,7 @@ public:
     used(true);
 
     if (!_unprepared_sql_part.empty()) {
-      throw errors::lack_prepare_arguments(
+      throw exceptions::lack_prepare_arguments(
           "lacks some arguments to prepare sql",
           std::string(_unprepared_sql_part.data(),
                       _unprepared_sql_part.size()));
@@ -56,7 +56,7 @@ public:
     std::cout << "full_sql is " << full_sql << std::endl;
 
     if (mysql_real_query(_db.get(), full_sql.c_str(), full_sql.size()) != 0) {
-      errors::throw_mariadb_error(_db.get(), full_sql);
+      throw mariadb_exception(_db.get(), full_sql);
     }
   }
 
@@ -67,7 +67,7 @@ public:
       while (mysql_more_results(_db.get())) {
         auto reset_set = mysql_use_result(_db.get());
         if (!reset_set) {
-          errors::throw_mariadb_error(_db.get());
+          throw mariadb_exception(_db.get());
         }
         mysql_free_result(reset_set);
       }
@@ -115,7 +115,7 @@ private:
                                                  });
 
     if (!result_set) {
-      throw errors::no_result_sets(
+      throw exceptions::no_result_sets(
           "no result sets to extract: exactly 1 result set expected", sql());
     }
 
@@ -129,7 +129,7 @@ private:
     }
 
     if (mysql_more_results(_db.get())) {
-      throw errors::more_result_sets("no all result sets extracted", sql());
+      throw exceptions::more_result_sets("no all result sets extracted", sql());
     }
   }
 
@@ -147,16 +147,16 @@ private:
                                                  });
 
     if (!result_set) {
-      throw errors::no_result_sets(
+      throw exceptions::no_result_sets(
           "no result sets to extract: exactly 1 result set expected", sql());
     }
 
     auto row_num = mysql_num_rows(result_set.get());
     if (row_num == 0) {
-      throw errors::no_rows("no rows to extract: exactly 1 row expected",
-                            sql());
+      throw exceptions::no_rows("no rows to extract: exactly 1 row expected",
+                                sql());
     } else if (row_num > 1) {
-      throw errors::more_rows("not all rows extracted", sql());
+      throw exceptions::more_rows("not all rows extracted", sql());
     }
 
     row = mysql_fetch_row(result_set.get());
@@ -166,7 +166,7 @@ private:
     call_back();
 
     if (mysql_more_results(_db.get())) {
-      throw errors::more_result_sets("no all result sets extracted", sql());
+      throw exceptions::more_result_sets("no all result sets extracted", sql());
     }
   }
 
@@ -215,7 +215,7 @@ private:
   get_col_from_row(unsigned int idx, Result &val, bool check_null = true) {
 
     if (idx >= field_count) {
-      throw errors::out_of_row_range(
+      throw exceptions::out_of_row_range(
           std::string("try to access column ") + std::to_string(idx) +
               " ,exceeds column count " + std::to_string(field_count),
           sql());
@@ -240,11 +240,11 @@ private:
 
     if (check_null) {
       if (!row[idx]) {
-        throw errors::can_not_hold_null(std::string("column ") +
-                                            std::to_string(idx) +
-                                            " can be NULL,can't be stored in "
-                                            "argument type,try std::optional",
-                                        sql());
+        throw exceptions::can_not_hold_null(
+            std::string("column ") + std::to_string(idx) +
+                " can be NULL,can't be stored in "
+                "argument type,try std::optional",
+            sql());
       }
     }
 
@@ -263,10 +263,10 @@ private:
           val = ::strtoll(row[idx], nullptr, 10);
         }
         if (errno != 0) {
-          throw errors::column_conversion(std::string("converting column ") +
-                                              std::to_string(idx) +
-                                              " to integer failed",
-                                          sql());
+          throw exceptions::column_conversion(
+              std::string("converting column ") + std::to_string(idx) +
+                  " to integer failed",
+              sql());
         }
         return;
       } else {
@@ -280,10 +280,10 @@ private:
         errno = 0;
         val = ::strtold(row[idx], nullptr);
         if (errno != 0) {
-          throw errors::column_conversion(std::string("converting column ") +
-                                              std::to_string(idx) +
-                                              " to floating point failed",
-                                          sql());
+          throw exceptions::column_conversion(
+              std::string("converting column ") + std::to_string(idx) +
+                  " to floating point failed",
+              sql());
         }
         return;
       } else {
@@ -328,7 +328,7 @@ private:
       break;
     }
 
-    throw errors::unsupported_column_type(
+    throw exceptions::unsupported_column_type(
         std::string("column ") + std::to_string(idx) + " type " +
             std::to_string(field_type) + " is not supported",
         sql());
@@ -414,7 +414,7 @@ public:
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
     if (!ret)
-      errors::throw_mariadb_error(_db.get());
+      throw mariadb_exception(_db.get());
   }
 
   database(std::shared_ptr<MYSQL> db) : _db(db) {}
@@ -477,7 +477,7 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
   } else {
 
     if (db._unprepared_sql_part.empty()) {
-      throw errors::more_prepare_arguments(
+      throw exceptions::more_prepare_arguments(
           "no extra arguments needed to prepare sql", db._sql);
     }
     db._sql_stream << std::forward<Argument>(val);
@@ -489,7 +489,7 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
 /* for nullptr support */
 inline database_binder &operator<<(database_binder &db, std::nullptr_t) {
   if (db._unprepared_sql_part.empty()) {
-    throw errors::more_prepare_arguments(
+    throw exceptions::more_prepare_arguments(
         "no extra arguments needed to prepare sql", db._sql);
   }
   db._sql_stream << "NULL";
@@ -497,7 +497,6 @@ inline database_binder &operator<<(database_binder &db, std::nullptr_t) {
   db._consume_prepared_sql_part();
   return db;
 }
-
 
 // Convert char* to string to trigger op<<(..., const std::string )
 template <std::size_t N>
@@ -509,7 +508,7 @@ inline database_binder &append_string_argument(database_binder &db,
                                                const char *str, size_t size) {
 
   if (db._unprepared_sql_part.empty()) {
-    throw errors::more_prepare_arguments(
+    throw exceptions::more_prepare_arguments(
         "no extra arguments needed to prepare sql", db._sql);
   }
 
@@ -526,8 +525,6 @@ inline database_binder &append_string_argument(database_binder &db,
   return db;
 }
 
-
-
 // std::optional support for NULL values
 template <typename OptionalT>
 inline database_binder &operator<<(database_binder &db,
@@ -538,7 +535,6 @@ inline database_binder &operator<<(database_binder &db,
     return db << nullptr;
   }
 }
-
 
 // Convert the rValue binder to a reference and call first op<<, its needed for
 // the call that creates the binder (be carefull of recursion here!)
