@@ -2,6 +2,7 @@
 
 #if __has_include(<mariadb/mysql.h>)
 #include <mariadb/mysql.h>
+#define USE_MARIADB
 #elif __has_include(<mysql/mysql.h>)
 #include <mysql/mysql.h>
 #define USE_MYSQL
@@ -383,32 +384,6 @@ public:
   }
 };
 
-namespace sql_function_binder {
-template <typename ContextType, std::size_t Count, typename Functions>
-inline void step(sqlite3_context *db, int count, sqlite3_value **vals);
-
-template <std::size_t Count, typename Functions, typename... Values>
-inline typename std::enable_if<(sizeof...(Values) && sizeof...(Values) < Count),
-                               void>::type
-step(sqlite3_context *db, int count, sqlite3_value **vals, Values &&... values);
-
-template <std::size_t Count, typename Functions, typename... Values>
-inline typename std::enable_if<(sizeof...(Values) == Count), void>::type
-step(sqlite3_context *db, int, sqlite3_value **, Values &&... values);
-
-template <typename ContextType, typename Functions>
-inline void final(sqlite3_context *db);
-
-template <std::size_t Count, typename Function, typename... Values>
-inline typename std::enable_if<(sizeof...(Values) < Count), void>::type
-scalar(sqlite3_context *db, int count, sqlite3_value **vals,
-       Values &&... values);
-
-template <std::size_t Count, typename Function, typename... Values>
-inline typename std::enable_if<(sizeof...(Values) == Count), void>::type
-scalar(sqlite3_context *db, int, sqlite3_value **, Values &&... values);
-} // namespace sql_function_binder
-
 struct mariadb_config {
   std::string host{"localhost"};
   unsigned int port{3306};
@@ -511,19 +486,6 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
     return db;
   }
 }
-/*
- inline void store_result_in_db(sqlite3_context* db, const int& val) {
-         sqlite3_result_int(db, val);
-}
-
- inline void store_result_in_db(sqlite3_context* db, const float& val) {
-         sqlite3_result_double(db, val);
-}
-
- inline void store_result_in_db(sqlite3_context* db, const double& val) {
-         sqlite3_result_double(db, val);
-}
-*/
 /* for nullptr support */
 inline database_binder &operator<<(database_binder &db, std::nullptr_t) {
   if (db._unprepared_sql_part.empty()) {
@@ -535,11 +497,7 @@ inline database_binder &operator<<(database_binder &db, std::nullptr_t) {
   db._consume_prepared_sql_part();
   return db;
 }
-inline void store_result_in_db(sqlite3_context *db, std::nullptr_t) {
-  sqlite3_result_null(db);
-}
 
-inline void get_val_from_db(sqlite3_value *value, std::string &s) {}
 
 // Convert char* to string to trigger op<<(..., const std::string )
 template <std::size_t N>
@@ -547,11 +505,6 @@ inline database_binder &operator<<(database_binder &db, const char (&STR)[N]) {
   return append_string_argument(db, STR, N - 1);
 }
 
-/*
-inline database_binder& operator <<(database_binder& db, const std::string& txt)
-{ return append_string_argument(db,txt.c_str(),txt.size());
-}
-*/
 inline database_binder &append_string_argument(database_binder &db,
                                                const char *str, size_t size) {
 
@@ -573,22 +526,7 @@ inline database_binder &append_string_argument(database_binder &db,
   return db;
 }
 
-inline void store_result_in_db(sqlite3_context *db, const std::string &val) {
-  sqlite3_result_text(db, val.data(), -1, SQLITE_TRANSIENT);
-}
 
-template <class Integral,
-          class = std::enable_if<std::is_integral<Integral>::type>>
-inline void store_result_in_db(sqlite3_context *db, const Integral &val) {
-  //	 store_result_in_db(db, static_cast<sqlite3_int64>(val));
-}
-template <class Integral, class = typename std::enable_if<
-                              std::is_integral<Integral>::value>::type>
-inline void get_val_from_db(sqlite3_value *value, Integral &val) {
-  sqlite3_int64 i;
-  get_val_from_db(value, i);
-  val = i;
-}
 
 // std::optional support for NULL values
 template <typename OptionalT>
@@ -600,25 +538,7 @@ inline database_binder &operator<<(database_binder &db,
     return db << nullptr;
   }
 }
-template <typename OptionalT>
-inline void store_result_in_db(sqlite3_context *db,
-                               const std::optional<OptionalT> &val) {
-  if (val) {
-    store_result_in_db(db, *val);
-  }
-  sqlite3_result_null(db);
-}
 
-template <typename OptionalT>
-inline void get_val_from_db(sqlite3_value *value, std::optional<OptionalT> &o) {
-  if (sqlite3_value_type(value) == SQLITE_NULL) {
-    o.reset();
-  } else {
-    OptionalT v;
-    get_val_from_db(value, v);
-    o = std::move(v);
-  }
-}
 
 // Convert the rValue binder to a reference and call first op<<, its needed for
 // the call that creates the binder (be carefull of recursion here!)
