@@ -116,10 +116,8 @@ ps << tmp;
 ps >> [&](int a,int b){ ... };
 
 // after a successfull execution the statment can be executed again, but the bound values are resetted.
-// If you dont need the returned values you can execute it like this
+// If you don't need the returned values you can execute it like this
 ps.execute();
-// or like this
-ps++;
 
 // To disable the execution of a statment when it goes out of scope and wasn't used
 ps.used(true); // or false if you want it to execute even if it was used
@@ -130,7 +128,7 @@ auto ps = db << "insert into complex_table_with_lots_of_indices values (?,?,?)";
 int i = 0;
 while( i < 100000 ){
    ps << long_list[i++] << long_list[i++] << long_list[i++];
-   ps++;
+   ps.execute();
 }
 ```
 

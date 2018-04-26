@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 
 #include "mariadb_modern_cpp/errors.h"
 #include "mariadb_modern_cpp/utility/function_traits.h"
@@ -111,10 +112,6 @@ private:
       _sql_stream.write(_unprepared_sql_part.data(), pos);
       _unprepared_sql_part.remove_prefix(pos);
     }
-    if (_unprepared_sql_part.empty()) {
-      execute();
-      return;
-    }
   }
 
   void _extract(std::function<void(void)> call_back) {
@@ -178,35 +175,29 @@ private:
                       std::is_same<std::u16string, Type>::value ||
                       std::is_same<std::vector<std::byte>, Type>::value> {};
 
-  /*
-  template <typename Allocator>
-  struct is_mariadb_value<std::vector<Type, Allocator>>
-      : public std::integral_constant<
-            bool, std::is_floating_point<Type>::value ||
-                      std::is_integral<Type>::value ||
-                      std::is_same<sqlite_int64, Type>::value> {};
-                      */
+  template <typename OptionalT>
+  struct is_mariadb_value<std::optional<OptionalT>>
+      : public std::integral_constant<bool,
+                                      is_mariadb_value<OptionalT>::value> {};
 #ifdef MODERN_SQLITE_STD_VARIANT_SUPPORT
   template <typename... Args>
   struct is_mariadb_value<std::variant<Args...>>
       : public std::integral_constant<bool, true> {};
 #endif
 
+  template <typename Test, template <typename...> class Ref>
+  struct is_specialization_of : std::false_type {};
+
+  template <template <typename...> class Ref, typename... Args>
+  struct is_specialization_of<Ref<Args...>, Ref> : std::true_type {};
+
   /* for nullptr & unique_ptr support */
   friend database_binder &operator<<(database_binder &db, std::nullptr_t);
-  template <typename T>
-  friend void get_col_from_db(database_binder &db, int inx,
-                              std::unique_ptr<T> &val);
   template <typename T> friend T operator++(database_binder &db, int);
   // Overload instead of specializing function templates
   // (http://www.gotw.ca/publications/mill17.htm)
-  friend void get_col_from_db(database_binder &db, int inx, int &val);
-  friend void get_col_from_db(database_binder &db, int inx, float &f);
-  friend void get_col_from_db(database_binder &db, int inx, double &d);
-  friend void get_col_from_db(database_binder &db, int inx, std::string &s);
   friend database_binder &append_string_argument(database_binder &db,
                                                  const char *str, size_t size);
-  friend void get_col_from_db(database_binder &db, int inx, std::u16string &w);
 
   template <typename Argument>
   friend database_binder &operator<<(database_binder &db, Argument &&val);
@@ -220,7 +211,7 @@ private:
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
-  get_col_from_row(unsigned int idx, Result &val) {
+  get_col_from_row(unsigned int idx, Result &val, bool check_null = true) {
 
     if (idx > field_count) {
       throw errors::out_of_row_range(
@@ -242,6 +233,30 @@ private:
     auto field_type = fields[idx].type;
     auto field_flags = fields[idx].flags;
 
+    constexpr bool is_optional =
+        is_specialization_of<Result, std::optional>::value;
+
+    if constexpr (is_optional) {
+      if (!row[idx]) {
+        return;
+      } else {
+        typename Result::value_type real_value;
+        get_col_from_row(idx, real_value, false);
+        val = std::move(real_value);
+        return;
+      }
+    }
+
+    if (check_null) {
+      if (!row[idx]) {
+        throw errors::can_not_hold_null(std::string("column ") +
+                                            std::to_string(idx) +
+                                            " can be NULL,can't be stored in "
+                                            "argument type,try std::optional",
+                                        sql());
+      }
+    }
+
     switch (field_type) {
     case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_SHORT:
@@ -249,6 +264,7 @@ private:
     case MYSQL_TYPE_LONGLONG:
     case MYSQL_TYPE_INT24:
       if constexpr (std::is_integral_v<Result>) {
+
         errno = 0;
         if (field_flags & UNSIGNED_FLAG) {
           val = ::strtoull(row[idx], nullptr, 10);
@@ -460,7 +476,7 @@ public:
   run(database_binder &db, Function &&function, Values &&... values) {
     typename std::remove_cv<typename std::remove_reference<
         nth_argument_type<Function, sizeof...(Values)>>::type>::type value{};
-    get_col_from_db(db, sizeof...(Values), value);
+    // get_col_from_db(db, sizeof...(Values), value);
 
     run<Function>(db, function, std::forward<Values>(values)...,
                   std::move(value));
@@ -499,13 +515,6 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
  inline void store_result_in_db(sqlite3_context* db, const int& val) {
          sqlite3_result_int(db, val);
 }
- inline void get_col_from_db(database_binder& db, int inx, int& val) {
-        if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
-                val = 0;
-        } else {
-                val = sqlite3_column_int(db._stmt.get(), inx);
-        }
-}
  inline void get_val_from_db(sqlite3_value *value, int& val) {
         if(sqlite3_value_type(value) == SQLITE_NULL) {
                 val = 0;
@@ -516,13 +525,6 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
 
  inline void store_result_in_db(sqlite3_context* db, const float& val) {
          sqlite3_result_double(db, val);
-}
- inline void get_col_from_db(database_binder& db, int inx, float& f) {
-        if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
-                f = 0;
-        } else {
-                f = float(sqlite3_column_double(db._stmt.get(), inx));
-        }
 }
  inline void get_val_from_db(sqlite3_value *value, float& f) {
         if(sqlite3_value_type(value) == SQLITE_NULL) {
@@ -536,15 +538,6 @@ inline database_binder &operator<<(database_binder &db, Argument &&val) {
          sqlite3_result_double(db, val);
 }
 */
-inline void get_col_from_db(database_binder &db, int inx, double &d) {
-  /*
-       if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
-               d = 0;
-       } else {
-               d = sqlite3_column_double(db._stmt.get(), inx);
-       }
-       */
-}
 inline void get_val_from_db(sqlite3_value *value, double &d) {
   /*
        if(sqlite3_value_type(value) == SQLITE_NULL) {
@@ -570,20 +563,6 @@ inline void store_result_in_db(sqlite3_context *db, std::nullptr_t) {
   sqlite3_result_null(db);
 }
 
-/* for unique_ptr<T> support */
-template <typename T>
-inline void get_col_from_db(database_binder &db, int inx,
-                            std::unique_ptr<T> &_ptr_) {
-  /*
-        if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
-                _ptr_ = nullptr;
-        } else {
-                auto underling_ptr = new T();
-                get_col_from_db(db, inx, *underling_ptr);
-                _ptr_.reset(underling_ptr);
-        }
-        */
-}
 template <typename T>
 inline void get_val_from_db(sqlite3_value *value, std::unique_ptr<T> &_ptr_) {
   if (sqlite3_value_type(value) == SQLITE_NULL) {
@@ -595,18 +574,6 @@ inline void get_val_from_db(sqlite3_value *value, std::unique_ptr<T> &_ptr_) {
   }
 }
 
-// std::string
-inline void get_col_from_db(database_binder &db, int inx, std::string &s) {
-  /*
-       if(sqlite3_column_type(db._stmt.get(), inx) == SQLITE_NULL) {
-               s = std::string();
-       } else {
-               sqlite3_column_bytes(db._stmt.get(), inx);
-               s = std::string(reinterpret_cast<char const
-     *>(sqlite3_column_text(db._stmt.get(), inx)));
-       }
-       */
-}
 inline void get_val_from_db(sqlite3_value *value, std::string &s) {}
 
 // Convert char* to string to trigger op<<(..., const std::string )
@@ -649,13 +616,6 @@ template <class Integral,
           class = std::enable_if<std::is_integral<Integral>::type>>
 inline void store_result_in_db(sqlite3_context *db, const Integral &val) {
   //	 store_result_in_db(db, static_cast<sqlite3_int64>(val));
-}
-template <class Integral, class = typename std::enable_if<
-                              std::is_integral<Integral>::value>::type>
-inline void get_col_from_db(database_binder &db, int inx, Integral &val) {
-  sqlite3_int64 i;
-  get_col_from_db(db, inx, i);
-  val = i;
 }
 template <class Integral, class = typename std::enable_if<
                               std::is_integral<Integral>::value>::type>

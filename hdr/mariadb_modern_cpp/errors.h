@@ -45,6 +45,7 @@ namespace sqlite {
 		class out_of_row_range: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class unsupported_column_type : public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		class column_conversion: public sqlite_exception { using sqlite_exception::sqlite_exception; };
+		class can_not_hold_null: public sqlite_exception { using sqlite_exception::sqlite_exception; };
 		static void throw_mariadb_error(MYSQL* mysql, const std::string &sql = "") {
 		  throw mariadb_exception(mysql, sql);
 		}

@@ -112,6 +112,7 @@ TEST_CASE("select") {
         val;
     CHECK(val == "longtext");
   }
+
   SUBCASE("extract LONGBLOB") {
     std::vector<std::byte> val;
     test_db << "select longblob_col from mariadb_modern_cpp_test.col_type_test "
@@ -124,5 +125,58 @@ TEST_CASE("select") {
       expected_val.push_back(static_cast<std::byte>(b));
     }
     CHECK(val == expected_val);
+  }
+
+  SUBCASE("can't hold NULL") {
+    bool has_exception = false;
+    try {
+      int val;
+      test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+	"where id=?;"
+	<< 1 >>
+	val;
+    } catch (const sqlite::errors::can_not_hold_null &) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
+  SUBCASE("false optional type") {
+    bool has_exception = false;
+    try {
+    std::optional<int> val;
+      test_db << "select varchar_col from mariadb_modern_cpp_test.col_type_test "
+	"where id=?;"
+	<< 1 >>
+	val;
+    } catch (const sqlite::errors::unsupported_column_type&) {
+      has_exception = true;
+    }
+    CHECK(has_exception);
+  }
+
+  SUBCASE("extract NULL") {
+    std::optional<std::string> val;
+    
+    test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(!val.has_value());
+  }
+
+  SUBCASE("extract NOT NULL") {
+    std::optional<std::string> val;
+    CHECK(!val.has_value());
+ 
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? where id=?;"<<"not null"<<1;
+
+    test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val.has_value());
+    CHECK(val.value()=="not null");
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? where id=?;"<<nullptr<<1;
   }
 }
