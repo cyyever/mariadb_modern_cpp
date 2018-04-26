@@ -37,6 +37,20 @@ TEST_CASE("select") {
     CHECK(has_exception);
   }
 
+  SUBCASE("select LONGBLOB") {
+    std::vector<std::byte> val;
+    for (auto b : {'l', 'o', 'n', 'g', 'b', 'l', 'o', 'b'}) {
+      val.push_back(static_cast<std::byte>(b));
+    }
+    size_t count = 0;
+    test_db << "select count(*) from mariadb_modern_cpp_test.col_type_test "
+               "where longblob_col=?;"
+            << val >>
+        count;
+
+    CHECK(count == 1);
+  }
+
   SUBCASE("extract with more than one row") {
     bool has_exception = false;
     try {

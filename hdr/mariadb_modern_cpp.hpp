@@ -421,43 +421,46 @@ public:
       database_binder &>::type
 
   operator<<(Argument &&val) {
-
-    if constexpr (std::is_same_v<typename std::remove_reference<Argument>::type,
-                                 std::string>) {
-      return append_string_argument(val.c_str(), val.size());
-    }
-
-    if (_unprepared_sql_part.empty()) {
-      throw exceptions::more_prepare_arguments(
-          "no extra arguments needed to prepare sql", _sql);
-    }
-
     using raw_argument_type = typename std::remove_cv<
         typename std::remove_reference<Argument>::type>::type;
-    if constexpr (is_specialization_of<raw_argument_type,
-                                       std::optional>::value) {
-      if (val.has_value()) {
-        return (*this) << (*val);
-      } else {
-        _sql_stream << "NULL";
-      }
-    } else if constexpr (is_specialization_of<raw_argument_type,
-                                              std::unique_ptr>::value) {
-      if (val.get()) {
-        return (*this) << (*val);
-      } else {
-        _sql_stream << "NULL";
-      }
-    } else {
-      _sql_stream << std::forward<Argument>(val);
-    }
 
-    _unprepared_sql_part.remove_prefix(1);
-    _consume_prepared_sql_part();
-    return (*this);
+    if constexpr (std::is_same_v<raw_argument_type, std::string>) {
+      return append_string_argument(val.c_str(), val.size());
+    } else if constexpr (std::is_same_v<raw_argument_type,
+                                        std::vector<std::byte>>) {
+      return append_string_argument(val.data(), val.size());
+    } else {
+
+      if (_unprepared_sql_part.empty()) {
+        throw exceptions::more_prepare_arguments(
+            "no extra arguments needed to prepare sql", _sql);
+      }
+
+      if constexpr (is_specialization_of<raw_argument_type,
+                                         std::optional>::value) {
+        if (val.has_value()) {
+          return (*this) << (*val);
+        } else {
+          _sql_stream << "NULL";
+        }
+      } else if constexpr (is_specialization_of<raw_argument_type,
+                                                std::unique_ptr>::value) {
+        if (val.get()) {
+          return (*this) << (*val);
+        } else {
+          _sql_stream << "NULL";
+        }
+      } else {
+        _sql_stream << std::forward<Argument>(val);
+      }
+
+      _unprepared_sql_part.remove_prefix(1);
+      _consume_prepared_sql_part();
+      return (*this);
+    }
   }
 
-  database_binder &append_string_argument(const char *str, size_t size) {
+  database_binder &append_string_argument(const void *str, size_t size) {
 
     if (_unprepared_sql_part.empty()) {
       throw exceptions::more_prepare_arguments(
@@ -465,8 +468,8 @@ public:
     }
 
     std::string escaped_str(size * 2 + 1, '\0');
-    auto real_size =
-        mysql_real_escape_string(_db.get(), escaped_str.data(), str, size);
+    auto real_size = mysql_real_escape_string(
+        _db.get(), escaped_str.data(), static_cast<const char *>(str), size);
     escaped_str.resize(real_size);
 
     _sql_stream << '"';
