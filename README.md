@@ -4,8 +4,8 @@ mariadb modern cpp wrapper
 This library is a lightweight modern wrapper around mariadb/mysql C api inspired by [sqlite_modern_cpp](https://github.com/SqliteModernCpp/sqlite_modern_cpp) and uses C++17.
 
 ```c++
-#include<iostream>
-#include <mariadb_modern_cpp.h>
+#include <iostream>
+#include <mariadb_modern_cpp.hpp>
 using namespace mariadb;
 using namespace std;
 
@@ -211,7 +211,7 @@ db << "select age,name,img from tbl where id = 2"
 You can use `std::optional<T>` as an alternative for `std::unique_ptr<T>` to work with NULL values.
 
 ```c++
-#include <mariadb_modern_cpp.h>
+#include <mariadb_modern_cpp.hpp>
 
 struct User {
    long long _id;
