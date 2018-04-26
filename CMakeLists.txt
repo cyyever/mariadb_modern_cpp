@@ -4,8 +4,6 @@ PROJECT(mariadb_modern_cpp)
 
 INCLUDE(cmake/all.cmake)
 
-FIND_PACKAGE(doctest REQUIRED)
-
 add_library(mariadb_modern_cpp INTERFACE)
 
 target_include_directories(mariadb_modern_cpp INTERFACE 

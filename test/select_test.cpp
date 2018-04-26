@@ -197,7 +197,7 @@ TEST_CASE("select") {
     CHECK(!val.has_value());
   }
 
-  SUBCASE("extract NOT NULL") {
+  SUBCASE("extract optional and update NOT NULL") {
     std::optional<std::string> val;
     CHECK(!val.has_value());
 
@@ -211,9 +211,42 @@ TEST_CASE("select") {
         val;
     CHECK(val.has_value());
     CHECK(val.value() == "not null");
+    val.reset();
     test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
                "where id=?;"
-            << nullptr << 1;
+            << val << 1;
+
+    test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(!val.has_value());
+  }
+
+  SUBCASE("extract unique_ptr and update NOT NULL") {
+    std::unique_ptr<std::string> val;
+    CHECK(!val);
+
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
+               "where id=?;"
+            << "not null" << 1;
+
+    test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(val);
+    CHECK(*val == "not null");
+    val.reset();
+    test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
+               "where id=?;"
+            << val << 1;
+
+    test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
+               "where id=?;"
+            << 1 >>
+        val;
+    CHECK(!val);
   }
 
   SUBCASE("extract LONGTEXT and NULL by std::tie") {

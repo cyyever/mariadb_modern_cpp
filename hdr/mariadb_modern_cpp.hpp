@@ -47,6 +47,10 @@ struct is_mariadb_value<std::optional<OptionalT>>
     : public std::integral_constant<bool, is_mariadb_value<OptionalT>::value> {
 };
 
+template <typename T>
+struct is_mariadb_value<std::unique_ptr<T>>
+    : public std::integral_constant<bool, is_mariadb_value<T>::value> {};
+
 class database;
 class database_binder;
 
@@ -203,16 +207,23 @@ private:
     auto field_type = fields[idx].type;
     auto field_flags = fields[idx].flags;
 
-    constexpr bool is_optional =
-        is_specialization_of<Result, std::optional>::value;
-
-    if constexpr (is_optional) {
+    if constexpr (is_specialization_of<Result, std::optional>::value) {
       if (!row[idx]) {
         return;
       } else {
         typename Result::value_type real_value;
         _get_col_from_row(idx, real_value, false);
         val = std::move(real_value);
+        return;
+      }
+    } else if constexpr (is_specialization_of<Result, std::unique_ptr>::value) {
+      if (!row[idx]) {
+        return;
+      } else {
+        typename Result::element_type real_value;
+        _get_col_from_row(idx, real_value, false);
+        val = std::make_unique<typename Result::element_type>(
+            std::move(real_value));
         return;
       }
     }
@@ -404,29 +415,12 @@ public:
 
   template <typename Argument>
 
-  //,typename = typename  std::enable_if<is_mariadb_value<typename
-  //std::remove_cv<typename
-  //std::remove_reference<Argument>::type>::type>::value, database_binder
-  //&>::type >
+  typename std::enable_if<
+      is_mariadb_value<typename std::remove_cv<
+          typename std::remove_reference<Argument>::type>::type>::value,
+      database_binder &>::type
 
-  //,typename =  typename std::enable_if<is_mariadb_value<Argument>::value,
-  //void>::type > inline
-
-  // typename std::enable_if<is_mariadb_value<typename std::remove_cv<typename
-  // std::remove_reference<Argument>::type>::type>::value, database_binder
-  // &>::type
-
-  database_binder &operator<<(Argument &&val) {
-
-    // if constexpr (!is_mariadb_value<typename std::remove_cv<typename
-    // std::remove_reference<Argument>::type>::type>::value) {
-    static_assert(
-
-        is_mariadb_value<typename std::remove_cv<
-            typename std::remove_reference<Argument>::type>::type>::value,
-        "unsupported argument type");
-
-    //}
+  operator<<(Argument &&val) {
 
     if constexpr (std::is_same_v<typename std::remove_reference<Argument>::type,
                                  std::string>) {
@@ -438,11 +432,18 @@ public:
           "no extra arguments needed to prepare sql", _sql);
     }
 
-    else if constexpr (is_specialization_of<typename std::remove_cv<
-                                                typename std::remove_reference<
-                                                    Argument>::type>::type,
-                                            std::optional>::value) {
+    using raw_argument_type = typename std::remove_cv<
+        typename std::remove_reference<Argument>::type>::type;
+    if constexpr (is_specialization_of<raw_argument_type,
+                                       std::optional>::value) {
       if (val.has_value()) {
+        return (*this) << (*val);
+      } else {
+        _sql_stream << "NULL";
+      }
+    } else if constexpr (is_specialization_of<raw_argument_type,
+                                              std::unique_ptr>::value) {
+      if (val.get()) {
         return (*this) << (*val);
       } else {
         _sql_stream << "NULL";
