@@ -333,24 +333,6 @@ try {
 catch (mariadb_exception& e) {}
 ```
 
-Custom SQL functions
-----
-
-To extend mariadb with custom functions, you just implement them in C++:
-
-```c++
-database db(":memory:");
-db.define("tgamma", [](double i) {return std::tgamma(i);});
-db << "CREATE TABLE numbers (number INTEGER);";
-
-for(auto i=0; i!=10; ++i)
-   db << "INSERT INTO numbers VALUES (?);" << i;
-
-db << "SELECT number, tgamma(number+1) FROM numbers;" >> [](double number, double factorial) {
-   cout << number << "! = " << factorial << '\n';
-};
-```
-
 Building and Installing
 ----
 
