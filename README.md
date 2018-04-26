@@ -12,13 +12,18 @@ using namespace std;
 int main() {
 
    try {
-      // creates a database file 'dbfile.db' if it does not exists.
-      database db("dbfile.db");
+      // connects to server
+      mariadb::mariadb_config config;
+      config.host = "xxx";
+      config.port = 3306;
+      config.user = "xxx";
+      config.passwd = "xxx";
+      database db("my_db",config);
 
       // executes the query and creates a 'user' table
       db <<
          "create table if not exists user ("
-         "   _id integer primary key autoincrement not null,"
+         "   _id int primary key autoincrement not null,"
          "   age int,"
          "   name text,"
          "   weight real"
@@ -27,26 +32,28 @@ int main() {
       // inserts a new user record.
       // binds the fields to '?' .
       // note that only types allowed for bindings are :
-      //      int ,long, long long, float, double
-      //      string , u16string
-      // mariadb3 only supports utf8 and utf16 strings, you should use std::string for utf8 and std::u16string for utf16.
-      // note that u"my text" is a utf16 string literal of type char16_t * .
+      //      integer types(int, long, long long, etc)
+      //      float types(float , double , etc)
+      //      string (for CHAR,VARCHAR,TEXT columns)
+      //      std::vector<std::byte> (for BLOB columns)
+      //      std::optional (for NULL columns)
       db << "insert into user (age,name,weight) values (?,?,?);"
          << 20
-         << u"bob"
+         << "bob"
          << 83.25;
 
       int age = 21;
       float weight = 68.5;
       string name = "jack";
-      db << u"insert into user (age,name,weight) values (?,?,?);" // utf16 query string
+      db << "insert into user (age,name,weight) values (?,?,?);"
          << age
          << name
          << weight;
 
-      cout << "The new record got assigned id " << db.last_insert_rowid() << endl;
+      //  gets the value generated for an AUTO_INCREMENT column by the previous INSERT or UPDATE statement.
+      cout << "The new record got assigned id " << db.insert_id() << endl;
 
-      // slects from user table on a condition ( age > 18 ) and executes
+      // selects from user table on a condition ( age > 18 ) and executes
       // the lambda for each row returned .
       db << "select age,name,weight from user where age > ? ;"
          << 18
@@ -75,31 +82,16 @@ int main() {
 }
 ```
 
-You can not execute multiple statements separated by semicolons in one go.
-
-Additional flags
+NOTES
 ----
-You can pass additional open flags to mariadb by using a config object:
-
-```c++
-mariadb_config config;
-config.flags = OpenFlags::READONLY
-database db("some_db", config);
-int a;
-// Now you can only read from db
-auto ps = db << "select a from table where something = ? and anotherthing = ?" >> a;
-config.flags = OpenFlags::READWRITE | OpenFlags::CREATE; // This is the default
-config.encoding = Encoding::UTF16; // The encoding is respected only if you create a new database
-database db2("some_db2", config);
-// If some_db2 didn't exists before, it will be created with UTF-16 encoding.
-```
+Currently multi-statement execution is not supported.
 
 Prepared Statements
 ----
 It is possible to retain and reuse statments this will keep the query plan and in case of an complex query or many uses might increase the performance significantly.
 
 ```c++
-database db(":memory:");
+database db("my_db",config);
 
 // if you use << on a mariadb::database you get a prepared statment back
 // this will not be executed till it gets destroyed or you execute it explicitly
@@ -134,31 +126,17 @@ while( i < 100000 ){
 
 Shared Connections
 ----
-If you need the handle to the database connection to execute mariadb3 commands directly you can get a managed shared_ptr to it, so it will not close as long as you have a referenc to it.
+If you need the handle to the database connection to execute mariadb commands directly you can get a managed shared_ptr to it, so it will not close as long as you have a referenc to it.
 
 Take this example on how to deal with a database backup using mariadbs own functions in a save and modern way.
 ```c++
 try {
-   database backup("backup");		//Open the database file we want to backup to
+   database db("my_db",config);
 
-   auto con = db.connection();   // get a handle to the DB we want to backup in our scope
+   auto mysql_handle = db.connection();   // get a handle to the DB we want to backup in our scope
                                  // this way we are sure the DB is open and ok while we backup
 
-   // Init Backup and make sure its freed on exit or exceptions!
-   auto state =
-      std::unique_ptr<mariadb3_backup,decltype(&mariadb3_backup_finish)>(
-      mariadb3_backup_init(backup.connection().get(), "main", con.get(), "main"),
-      mariadb3_backup_finish
-      );
-
-   if(state) {
-      int rc;
-      // Each iteration of this loop copies 500 database pages from database db to the backup database.
-      do {
-         rc = mariadb3_backup_step(state.get(), 500);
-         std::cout << "Remaining " << mariadb3_backup_remaining(state.get()) << "/" << mariadb3_backup_pagecount(state.get()) << "\n";
-      } while(rc == mariadb_OK || rc == mariadb_BUSY || rc == mariadb_LOCKED);
-   }
+   mysql_ping(mysql_handle.get());
 } // Release allocated resources.
 ```
 
@@ -170,18 +148,14 @@ You can use transactions with `begin;`, `commit;` and `rollback;` commands.
 db << "begin;"; // begin a transaction ...   
 db << "insert into user (age,name,weight) values (?,?,?);"
    << 20
-   << u"bob"
+   << "bob"
    << 83.25f;
-db << "insert into user (age,name,weight) values (?,?,?);" // utf16 string
-   << 21
-   << u"jack"
-   << 68.5;
 db << "commit;"; // commit all the changes.
 
 db << "begin;"; // begin another transaction ....
-db << "insert into user (age,name,weight) values (?,?,?);" // utf16 string
+db << "insert into user (age,name,weight) values (?,?,?);" 
    << 19
-   << u"chirs"
+   << "chirs"
    << 82.7;
 db << "rollback;"; // cancel this transaction ...
 
@@ -189,19 +163,17 @@ db << "rollback;"; // cancel this transaction ...
 
 Blob
 ----
-Use `std::vector<T>` to store and retrieve blob data.  
-`T` could be `char,short,int,long,long long, float or double`.
+Use `std::vector<std::byte>` to store and retrieve blob data.  
 
 ```c++
 db << "CREATE TABLE person (name TEXT, numbers BLOB);";
-db << "INSERT INTO person VALUES (?, ?)" << "bob" << vector<int> { 1, 2, 3, 4};
-db << "INSERT INTO person VALUES (?, ?)" << "sara" << vector<double> { 1.0, 2.0, 3.0, 4.0};
+db << "INSERT INTO person VALUES (?, ?)" << "bob" << vector<std::byte> { 1, 2, 3, 4};
 
-vector<int> numbers_bob;
+vector<std::byte> numbers_bob;
 db << "SELECT numbers from person where name = ?;" << "bob" >> numbers_bob;
 
-db << "SELECT numbers from person where name = ?;" << "sara" >> [](vector<double> numbers_sara){
-    for(auto e : numbers_sara) cout << e << ' '; cout << endl;
+db << "SELECT numbers from person where name = ?;" << "sara" >> [](vector<std::byte> numbers_sara){
+    for(auto e : numbers_sara) cout << (int)e << ' '; cout << endl;
 };
 ```
 
@@ -236,8 +208,6 @@ db << "select age,name,img from tbl where id = 2"
 		};
 ```
 
-NULL values (C++17)
-----
 You can use `std::optional<T>` as an alternative for `std::unique_ptr<T>` to work with NULL values.
 
 ```c++
@@ -255,7 +225,7 @@ int main() {
    user.name = "bob";
 
    // Same database as above
-   database db("dbfile.db");
+   database db("my_db",config);
 
    // Here, age and weight will be inserted as NULL in the database.
    db << "insert into user (age,name,weight) values (?,?,?);"
@@ -284,9 +254,8 @@ int main() {
 Errors
 ----
 
-On error, the library throws an error class indicating the type of error. The error classes are derived from the mariadb3 error names, so if the error code is mariadb_CONSTRAINT, the error class thrown is mariadb::errors::constraint. mariadb3 extended error names are supported too. So there is e.g. a class mariadb::errors::constraint_primarykey derived from mariadb::errors::constraint. Note that all errors are derived from mariadb::mariadb_exception and that itself is derived from std::runtime_exception.
-mariadb::mariadb_exception has a `get_code()` member function to get the mariadb3 error code or `get_extended_code()` to get the extended error code.
-Additionally you can use `get_sql()` to see the SQL statement leading to the error.
+On error, the library throws an error class indicating the type of error. The error classes are derived from the mariadb::mariadb_exception class.
+you can use `get_sql()` to see the SQL statement leading to the error.
 
 ```c++
 database db(":memory:");
@@ -300,37 +269,9 @@ try {
 /* if you are trying to catch all mariadb related exceptions
  * make sure to catch them by reference */
 catch (mariadb_exception& e) {
-   cerr  << e.get_code() << ": " << e.what() << " during "
+   cerr  << e.what() << " during "
          << e.get_sql() << endl;
 }
-/* you can catch specific exceptions as well,
-   catch(mariadb::errors::constraint e) {  } */
-/* and even more specific exceptions
-   catch(mariadb::errors::constraint_primarykey e) {  } */
-```
-
-You can also register a error logging function with `mariadb::error_log`.
-The `<mariadb_modern_cpp/log.h>` header has to be included to make this function available.
-The call to `mariadb::error_log` has to be the first call to any `mariadb_modern_cpp` function by your program.
-
-```c++
-error_log(
-   [&](mariadb_exception& e) {
-      cerr  << e.get_code() << ": " << e.what() << endl;
-   },
-   [&](errors::misuse& e) {
-      /* You can behave differently to specific errors */
-   }
-);
-database db(":memory:");
-db << "create table person (id integer primary key not null, name text);";
-
-try {
-   db << "insert into person (id, name) values (?,?)" << 1 << "jack";
-   // inserting again to produce error
-   db << "insert into person (id, name) values (?,?)" << 1 << "jack";
-}
-catch (mariadb_exception& e) {}
 ```
 
 Building and Installing
