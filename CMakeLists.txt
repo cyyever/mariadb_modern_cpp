@@ -15,8 +15,18 @@ TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE
   mariadb
 )
 
+
+option(BUILD_TESTS "Build tests" ON)
+option(BUILD_FUZZING "Build fuzzing" ON)
+
 # test
-add_subdirectory(test)
+if(BUILD_TESTS)
+  add_subdirectory(test)
+endif()
+
+if(BUILD_FUZZING)
+  add_subdirectory(fuzz_test)
+endif()
 
 # install lib
 INSTALL(TARGETS mariadb_modern_cpp EXPORT ${PROJECT_NAME}Targets
