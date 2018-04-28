@@ -15,7 +15,8 @@ TEST_CASE("select") {
   config.host = "127.0.0.1";
   config.user = "mariadb_modern_cpp_test";
   config.passwd = "123";
-  mariadb::database test_db("mariadb_modern_cpp_test", config);
+  config.default_database = "mariadb_modern_cpp_test";
+  mariadb::database test_db(config);
 
   SUBCASE("select without argument") {
     test_db << "select * from mariadb_modern_cpp_test.col_type_test;";

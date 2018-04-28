@@ -14,7 +14,8 @@ TEST_CASE("connect with passwd") {
     config.host = "127.0.0.1";
     config.user = "mariadb_modern_cpp_test";
     config.passwd = "123";
-    mariadb::database test_db("mariadb_modern_cpp_test", config);
+    config.default_database = "mariadb_modern_cpp_test";
+    mariadb::database test_db(config);
   } catch (const mariadb::mariadb_exception &e) {
     auto err_msg = e.what();
     CHECK_MESSAGE(false, err_msg);
@@ -27,7 +28,8 @@ TEST_CASE("connect without passwd") {
     mariadb::mariadb_config config;
     config.host = "127.0.0.1";
     config.user = "mariadb_modern_cpp_test";
-    mariadb::database test_db("mariadb_modern_cpp_test", config);
+    config.default_database = "mariadb_modern_cpp_test";
+    mariadb::database test_db(config);
   } catch (const mariadb::mariadb_exception &e) {
     has_exception = true;
   }

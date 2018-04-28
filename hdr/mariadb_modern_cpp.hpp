@@ -502,6 +502,7 @@ struct mariadb_config {
   std::string user;
   std::string passwd;
   std::string unix_socket;
+  std::string default_database;
 };
 
 class database {
@@ -509,8 +510,7 @@ protected:
   std::shared_ptr<MYSQL> _db;
 
 public:
-  database(const std::string &db_name, const mariadb_config &config = {})
-      : _db(nullptr) {
+  database(const mariadb_config &config = {}) : _db(nullptr) {
     MYSQL *tmp = mysql_init(nullptr);
     if (!tmp) {
       throw std::runtime_error("mysql_init failed");
@@ -518,7 +518,7 @@ public:
 
     auto ret = mysql_real_connect(
         tmp, config.host.c_str(), config.user.c_str(), config.passwd.c_str(),
-        db_name.c_str(), config.port,
+        config.default_database.c_str(), config.port,
         config.unix_socket.empty() ? nullptr : config.unix_socket.c_str(),
         CLIENT_FOUND_ROWS);
     _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {

@@ -15,8 +15,9 @@ static std::unique_ptr<mariadb::database> &get_database() {
     config.host = "127.0.0.1";
     config.user = "mariadb_modern_cpp_test";
     config.passwd = "123";
+    config.default_database = "mariadb_modern_cpp_test";
 
-    db = std::make_unique<mariadb::database>("mariadb_modern_cpp_test", config);
+    db = std::make_unique<mariadb::database>(config);
   }
   return db;
 }

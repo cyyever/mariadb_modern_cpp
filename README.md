@@ -18,7 +18,8 @@ int main() {
       config.port = 3306;
       config.user = "xxx";
       config.passwd = "xxx";
-      database db("my_db",config);
+      config.default_database = "my_db";
+      database db(config);
 
       // executes the query and creates a 'user' table
       db <<
@@ -91,7 +92,7 @@ Prepared Statements
 It is possible to retain and reuse statments this will keep the query plan and in case of an complex query or many uses might increase the performance significantly.
 
 ```c++
-database db("my_db",config);
+database db(config);
 
 // if you use << on a mariadb::database you get a prepared statment back
 // this will not be executed till it gets destroyed or you execute it explicitly
@@ -131,7 +132,7 @@ If you need the handle to the database connection to execute mariadb commands di
 Take this example on how to deal with a database backup using mariadbs own functions in a save and modern way.
 ```c++
 try {
-   database db("my_db",config);
+   database db(config);
 
    auto mysql_handle = db.connection();   // get a handle to the DB we want to backup in our scope
                                  // this way we are sure the DB is open and ok while we backup
@@ -227,7 +228,7 @@ int main() {
    user.name = "bob";
 
    // Same database as above
-   database db("my_db",config);
+   database db(config);
 
    // Here, age and weight will be inserted as NULL in the database.
    db << "insert into user (age,name,weight) values (?,?,?);"
