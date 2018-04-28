@@ -524,12 +524,4 @@ public:
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
 };
 
-// Convert the rValue binder to a reference and call first op<<, its needed for
-// the call that creates the binder (be carefull of recursion here!)
-template <typename T>
-database_binder &&operator<<(database_binder &&db, const T &val) {
-  db << val;
-  return std::move(db);
-}
-
 } // namespace mariadb
