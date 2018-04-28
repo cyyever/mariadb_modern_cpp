@@ -304,7 +304,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("select and extract LONGBLOB by std::vector<double>") {
-    std::vector<double> val{1.0, 2.0};
+    std::vector<double> val{1.0, 2.0, 0.0};
     size_t count = 0;
 
     test_db << "CREATE TABLE IF NOT EXISTS mariadb_modern_cpp_test.tmp_table "
