@@ -17,7 +17,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -38,9 +37,15 @@ struct is_mariadb_value
     : public std::integral_constant<
           bool, std::is_floating_point<Type>::value ||
                     std::is_integral<Type>::value ||
-                    std::is_same<std::string, Type>::value ||
-                    std::is_same<std::u16string, Type>::value ||
-                    std::is_same<std::vector<std::byte>, Type>::value> {};
+                    std::is_same<std::string, Type>::value> {};
+
+template <typename Type, typename Allocator>
+struct is_mariadb_value<std::vector<Type, Allocator>>
+    : public std::integral_constant<bool,
+                                    std::is_floating_point<Type>::value ||
+                                        std::is_integral<Type>::value ||
+                                        std::is_same<std::byte, Type>::value> {
+};
 
 template <typename OptionalT>
 struct is_mariadb_value<std::optional<OptionalT>>
@@ -74,10 +79,8 @@ public:
                       _unprepared_sql_part.size()));
     }
 
-    auto full_sql = _sql_stream.str();
-
-    if (mysql_real_query(_db.get(), full_sql.c_str(), full_sql.size()) != 0) {
-      throw mariadb_exception(_db.get(), full_sql);
+    if (mysql_real_query(_db.get(), _full_sql.c_str(), _full_sql.size()) != 0) {
+      throw mariadb_exception(_db.get(), _full_sql);
     }
   }
 
@@ -101,7 +104,7 @@ private:
   std::shared_ptr<MYSQL> _db;
   std::string _sql;
   std::string_view _unprepared_sql_part;
-  std::ostringstream _sql_stream;
+  std::string _full_sql;
   MYSQL_ROW row{};
   unsigned long *lengths{};
   MYSQL_FIELD *fields{};
@@ -112,11 +115,11 @@ private:
   void _consume_prepared_sql_part() {
     auto pos = _unprepared_sql_part.find('?');
     if (pos == _unprepared_sql_part.npos) {
-      _sql_stream.write(_unprepared_sql_part.data(),
-                        _unprepared_sql_part.size());
+      _full_sql.append(_unprepared_sql_part.data(),
+                       _unprepared_sql_part.size());
       _unprepared_sql_part.remove_prefix(_unprepared_sql_part.size());
     } else if (pos != 0) {
-      _sql_stream.write(_unprepared_sql_part.data(), pos);
+      _full_sql.append(_unprepared_sql_part.data(), pos);
       _unprepared_sql_part.remove_prefix(pos);
     }
   }
@@ -308,9 +311,15 @@ private:
           val = std::string(row[idx], lengths[idx]);
           return;
         }
-      } else if constexpr (std::is_same_v<Result, std::vector<std::byte>>) {
-        auto byte_ptr = reinterpret_cast<std::byte *>(row[idx]);
-        val = std::vector<std::byte>(byte_ptr, byte_ptr + lengths[idx]);
+      } else if constexpr (is_specialization_of<Result, std::vector>::value) {
+        if (lengths[idx] % sizeof(typename Result::value_type) != 0) {
+          throw exceptions::bad_alignment(
+              std::string("column ") + std::to_string(idx) + " type " +
+                  std::to_string(field_type) + " can't be stored in argument",
+              sql());
+        }
+        val.resize(lengths[idx] / sizeof(typename Result::value_type));
+        memcpy(val.data(), row[idx], lengths[idx]);
         return;
       }
       break;
@@ -426,9 +435,11 @@ public:
 
     if constexpr (std::is_same_v<raw_argument_type, std::string>) {
       return append_string_argument(val.c_str(), val.size());
-    } else if constexpr (std::is_same_v<raw_argument_type,
-                                        std::vector<std::byte>>) {
-      return append_string_argument(val.data(), val.size());
+    } else if constexpr (is_specialization_of<raw_argument_type,
+                                              std::vector>::value) {
+      return append_string_argument(
+          val.data(),
+          val.size() * sizeof(typename raw_argument_type::value_type));
     } else {
 
       if (_unprepared_sql_part.empty()) {
@@ -441,17 +452,17 @@ public:
         if (val.has_value()) {
           return (*this) << (*val);
         } else {
-          _sql_stream << "NULL";
+          _full_sql.append("NULL");
         }
       } else if constexpr (is_specialization_of<raw_argument_type,
                                                 std::unique_ptr>::value) {
         if (val.get()) {
           return (*this) << (*val);
         } else {
-          _sql_stream << "NULL";
+          _full_sql.append("NULL");
         }
       } else {
-        _sql_stream << std::forward<Argument>(val);
+        _full_sql.append(std::to_string(std::forward<Argument>(val)));
       }
 
       _unprepared_sql_part.remove_prefix(1);
@@ -472,9 +483,13 @@ public:
         _db.get(), escaped_str.data(), static_cast<const char *>(str), size);
     escaped_str.resize(real_size);
 
-    _sql_stream << '"';
-    _sql_stream.write(escaped_str.data(), escaped_str.size());
-    _sql_stream << '"';
+    if (real_size == static_cast<unsigned long>(-1)) {
+      throw mariadb_exception(_db.get());
+    }
+
+    _full_sql.push_back('\'');
+    _full_sql.append(escaped_str.data(), escaped_str.size());
+    _full_sql.push_back('\'');
     _unprepared_sql_part.remove_prefix(1);
     _consume_prepared_sql_part();
     return (*this);

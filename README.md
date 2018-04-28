@@ -165,6 +165,8 @@ Blob
 ----
 Use `std::vector<std::byte>` to store and retrieve blob data.  
 
+You can also Use `std::vector<T>` to store and retrieve blob data where `T` is a integer type,we will treat the vector as an continuous memeory block like std::vector<std::byte>.
+
 ```c++
 db << "CREATE TABLE person (name TEXT, numbers BLOB);";
 db << "INSERT INTO person VALUES (?, ?)" << "bob" << vector<std::byte> { 1, 2, 3, 4};

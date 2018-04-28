@@ -5,7 +5,7 @@
 
 #include <mariadb/mysql.h>
 
-namespace  mariadb{
+namespace mariadb {
 class mariadb_exception : public std::runtime_error {
 public:
   mariadb_exception(const char *msg, std::string sql = "")
@@ -56,5 +56,8 @@ class column_conversion : public mariadb_exception {
 class can_not_hold_null : public mariadb_exception {
   using mariadb_exception::mariadb_exception;
 };
+class bad_alignment : public mariadb_exception {
+  using mariadb_exception::mariadb_exception;
+};
 } // namespace exceptions
-}
+} // namespace mariadb

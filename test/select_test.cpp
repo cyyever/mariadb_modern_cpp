@@ -303,6 +303,24 @@ TEST_CASE("select") {
         };
   }
 
+  SUBCASE("select and extract LONGBLOB by std::vector<double>") {
+    std::vector<double> val{1.0, 2.0};
+    size_t count = 0;
+
+    test_db << "CREATE TABLE IF NOT EXISTS mariadb_modern_cpp_test.tmp_table "
+               "(digits LONGBLOB);";
+
+    test_db << "INSERT INTO tmp_table VALUES (?)" << val;
+
+    test_db << "select count(*) from mariadb_modern_cpp_test.tmp_table where "
+               "digits =?;"
+            << val >>
+        count;
+
+    test_db << "drop TABLE mariadb_modern_cpp_test.tmp_table;";
+    CHECK(count == 1);
+  }
+
   SUBCASE("used and reexecutes sql") {
     auto ps = test_db
               << "select count(*) from mariadb_modern_cpp_test.col_type_test;";

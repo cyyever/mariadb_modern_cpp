@@ -16,8 +16,8 @@ TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE
 )
 
 
-option(BUILD_TESTS "Build tests" ON)
-option(BUILD_FUZZING "Build fuzzing" ON)
+option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_FUZZING "Build fuzzing" OFF)
 
 # test
 if(BUILD_TESTS)
@@ -29,8 +29,7 @@ if(BUILD_FUZZING)
 endif()
 
 # install lib
-INSTALL(TARGETS mariadb_modern_cpp EXPORT ${PROJECT_NAME}Targets
-  )
+INSTALL(TARGETS mariadb_modern_cpp EXPORT ${PROJECT_NAME}Targets)
 
 install(DIRECTORY
     ${CMAKE_CURRENT_SOURCE_DIR}/hdr/
