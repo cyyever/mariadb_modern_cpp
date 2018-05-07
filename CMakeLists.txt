@@ -13,8 +13,8 @@ target_include_directories(mariadb_modern_cpp INTERFACE
 
 TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE 
   mariadb
+  -L/usr/local/lib/mariadb
 )
-
 
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_FUZZING "Build fuzzing" OFF)

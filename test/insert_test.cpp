@@ -10,7 +10,7 @@
 
 #include "../hdr/mariadb_modern_cpp.hpp"
 
-TEST_CASE("select") {
+TEST_CASE("insert") {
   mariadb::mariadb_config config;
   config.host = "127.0.0.1";
   config.user = "mariadb_modern_cpp_test";
@@ -19,7 +19,6 @@ TEST_CASE("select") {
   mariadb::database test_db(config);
 
   SUBCASE("insert_id") {
-    std::string name;
     test_db << "CREATE TABLE IF NOT EXISTS mariadb_modern_cpp_test.tmp_table "
                "(id BIGINT PRIMARY KEY AUTO_INCREMENT NOT NULL);";
     test_db << "INSERT INTO tmp_table VALUES ();";

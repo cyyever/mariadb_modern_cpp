@@ -539,4 +539,11 @@ public:
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
 };
 
+struct thread_setting {
+
+  thread_setting() { mysql_thread_init(); }
+
+  ~thread_setting() { mysql_thread_end(); }
+};
+inline thread_local thread_setting setting;
 } // namespace mariadb
