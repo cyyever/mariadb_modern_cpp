@@ -11,9 +11,21 @@ target_include_directories(mariadb_modern_cpp INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE 
-  /usr/local/lib/mariadb/libmariadb.so
-)
+FIND_PATH(MARIADB_CONFIG_DIR mariadb_config PATHS /opt/bin /usr/bin /usr/local/bin)
+IF(MARIADB_CONFIG_DIR)
+  EXEC_PROGRAM(${MARIADB_CONFIG_DIR}/mariadb_config
+    ARGS "--include"
+    OUTPUT_VARIABLE MARIADB_INCLUDE_DIR)
+  separate_arguments(MARIADB_INCLUDE_DIR)
+  target_compile_options(mariadb_modern_cpp INTERFACE ${MARIADB_INCLUDE_DIR})
+  EXEC_PROGRAM(${MARIADB_CONFIG_DIR}/mariadb_config
+    ARGS "--libs_r"
+    OUTPUT_VARIABLE MARIADB_LIBS)
+  separate_arguments(MARIADB_LIBS)
+  TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE ${MARIADB_LIBS})
+ELSE()
+  message(FATAL_ERROR "no mariadb C library found")
+ENDIF()
 
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_FUZZING "Build fuzzing" OFF)
