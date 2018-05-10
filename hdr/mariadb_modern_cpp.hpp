@@ -513,7 +513,7 @@ public:
   database(const mariadb_config &config = {}) : _db(nullptr) {
     MYSQL *tmp = mysql_init(nullptr);
     if (!tmp) {
-      throw std::runtime_error("mysql_init failed");
+      throw mariadb_exception("mysql_init failed");
     }
 
     auto ret = mysql_real_connect(
@@ -525,7 +525,7 @@ public:
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
     if (!ret)
-      throw mariadb_exception(_db.get());
+      throw exceptions::connection(_db.get());
   }
 
   database(std::shared_ptr<MYSQL> db) : _db(db) {}
