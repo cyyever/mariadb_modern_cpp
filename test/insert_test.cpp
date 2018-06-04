@@ -29,4 +29,20 @@ TEST_CASE("insert") {
     CHECK(row_id2 == row_id + 1);
     test_db << "drop TABLE mariadb_modern_cpp_test.tmp_table;";
   }
+
+  SUBCASE("batch insert") {
+
+    test_db << "CREATE TABLE IF NOT EXISTS mariadb_modern_cpp_test.tmp_table "
+               "(id BIGINT PRIMARY KEY AUTO_INCREMENT NOT NULL);";
+    auto ps =
+        test_db << "insert into mariadb_modern_cpp_test.tmp_table values (?)";
+    int i = 1;
+    while (i < 100) {
+      std::cout << "i=" << i << std::endl;
+      ps << i;
+      ps.execute();
+      i++;
+    }
+    test_db << "drop TABLE mariadb_modern_cpp_test.tmp_table;";
+  }
 }

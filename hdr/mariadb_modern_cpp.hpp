@@ -82,6 +82,7 @@ public:
     if (mysql_real_query(_db.get(), _full_sql.c_str(), _full_sql.size()) != 0) {
       throw mariadb_exception(_db.get(), _full_sql);
     }
+    _reset();
   }
 
   std::string sql() { return _sql; }
@@ -111,6 +112,12 @@ private:
   unsigned int field_count{};
 
   bool execution_started = false;
+
+  void _reset() {
+    _unprepared_sql_part = _sql;
+    _full_sql.clear();
+    _consume_prepared_sql_part();
+  }
 
   void _consume_prepared_sql_part() {
     auto pos = _unprepared_sql_part.find('?');
@@ -336,7 +343,7 @@ private:
 public:
   database_binder(std::shared_ptr<MYSQL> db, std::string sql)
       : _db(db), _sql(std::move(sql)), _unprepared_sql_part(_sql) {
-    _consume_prepared_sql_part();
+    _reset();
   }
 
   ~database_binder() noexcept(false) {
