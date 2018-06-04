@@ -39,7 +39,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("select LONGBLOB") {
-    std::vector<std::byte> val;
+    std::vector<std::byte> val{};
     for (auto b : {'l', 'o', 'n', 'g', 'b', 'l', 'o', 'b'}) {
       val.push_back(static_cast<std::byte>(b));
     }
@@ -73,7 +73,7 @@ TEST_CASE("select") {
   SUBCASE("extract without row") {
     bool has_exception = false;
     try {
-      uint64_t val;
+      uint64_t val{};
       test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
                  "where id>1000;" >>
           val;
@@ -84,7 +84,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract BIGINT UNSIGNED") {
-    uint64_t val;
+    uint64_t val{};
     test_db << "select uint_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -92,7 +92,7 @@ TEST_CASE("select") {
     CHECK(val == 1);
   }
   SUBCASE("extract BIGINT") {
-    int64_t val;
+    int64_t val{};
     test_db << "select int_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -101,7 +101,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract DECIMAL UNSIGNED") {
-    long double val;
+    long double val{};
     test_db << "select udec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -109,7 +109,7 @@ TEST_CASE("select") {
     CHECK(std::fabs(val - 0.3) < 0.0000001);
   }
   SUBCASE("extract DECIMAL") {
-    long double val;
+    long double val{};
     test_db << "select dec_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -118,7 +118,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract DOUBLE UNSIGNED") {
-    long double val;
+    long double val{};
     test_db << "select udouble_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -127,7 +127,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract DOUBLE") {
-    long double val;
+    long double val{};
     test_db << "select double_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
             << 1 >>
@@ -214,7 +214,6 @@ TEST_CASE("select") {
 
   SUBCASE("extract optional and update NOT NULL") {
     std::optional<std::string> val;
-    CHECK(!val.has_value());
 
     test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
                "where id=?;"
@@ -240,7 +239,6 @@ TEST_CASE("select") {
 
   SUBCASE("extract unique_ptr and update NOT NULL") {
     std::unique_ptr<std::string> val;
-    CHECK(!val);
 
     test_db << "update mariadb_modern_cpp_test.col_type_test set null_col= ? "
                "where id=?;"
