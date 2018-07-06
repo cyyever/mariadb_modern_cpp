@@ -27,11 +27,11 @@ ELSE()
   message(FATAL_ERROR "no mariadb C library found")
 ENDIF()
 
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TEST "Build tests" OFF)
 option(BUILD_FUZZING "Build fuzzing" OFF)
 
 # test
-if(BUILD_TESTS)
+if(BUILD_TEST)
   add_subdirectory(test)
 endif()
 

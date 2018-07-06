@@ -3,7 +3,17 @@
 #include <stdexcept>
 #include <string>
 
+#if __has_include(<mariadb/mysql.h>)
+#include <mariadb/errmsg.h>
 #include <mariadb/mysql.h>
+#define USE_MARIADB
+#elif __has_include(<mysql/mysql.h>)
+#include <mysql/errmsg.h>
+#include <mysql/mysql.h>
+#define USE_MYSQL
+#else
+#error No mariadb/mysql header found!
+#endif
 
 namespace mariadb {
 class mariadb_exception : public std::runtime_error {
@@ -11,14 +21,18 @@ public:
   mariadb_exception(std::string msg, std::string sql = "")
       : runtime_error(
             msg + (sql.empty() ? "" : (std::string(" \nerror sql :") + sql))),
-        _sql(std::move(sql)) {}
+        _sql(std::move(sql)), _errno(errno) {}
 
   mariadb_exception(MYSQL *mysql, std::string sql = "")
-      : mariadb_exception(mysql_error(mysql), std::move(sql)) {}
+      : mariadb_exception(mysql_error(mysql), std::move(sql)) {
+    _errno = mysql_errno(mysql);
+  }
   const std::string &get_sql() const { return _sql; }
+  auto get_errno() const -> auto { return _errno; }
 
 private:
-  std::string _sql = "";
+  std::string _sql{};
+  unsigned int _errno{CR_UNKNOWN_ERROR};
 };
 
 namespace exceptions {

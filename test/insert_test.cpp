@@ -38,7 +38,6 @@ TEST_CASE("insert") {
         test_db << "insert into mariadb_modern_cpp_test.tmp_table values (?)";
     int i = 1;
     while (i < 100) {
-      std::cout << "i=" << i << std::endl;
       ps << i;
       ps.execute();
       i++;

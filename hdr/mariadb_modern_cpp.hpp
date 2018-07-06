@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
@@ -504,12 +505,15 @@ public:
 };
 
 struct mariadb_config {
-  std::string host{"localhost"};
-  unsigned int port{3306};
+  std::optional<std::string> host;
+  std::optional<unsigned int> port;
+  std::optional<std::string> unix_socket;
   std::string user;
   std::string passwd;
-  std::string unix_socket;
-  std::string default_database;
+  std::optional<std::string> default_database;
+  std::chrono::seconds connect_timeout{10};
+  std::chrono::seconds read_timeout{120};
+  std::chrono::seconds write_timeout{10};
 };
 
 class database {
@@ -523,10 +527,28 @@ public:
       throw mariadb_exception("mysql_init failed");
     }
 
+    unsigned int seconds_count = config.connect_timeout.count();
+    auto res = mysql_options(tmp, MYSQL_OPT_CONNECT_TIMEOUT, &seconds_count);
+    if (res != 0)
+      throw mariadb_exception("MYSQL_OPT_CONNECT_TIMEOUT failed");
+
+    seconds_count = config.read_timeout.count();
+    res = mysql_options(tmp, MYSQL_OPT_READ_TIMEOUT, &seconds_count);
+    if (res != 0)
+      throw mariadb_exception("MYSQL_OPT_READ_TIMEOUT failed");
+
+    seconds_count = config.write_timeout.count();
+    res = mysql_options(tmp, MYSQL_OPT_WRITE_TIMEOUT, &seconds_count);
+    if (res != 0)
+      throw mariadb_exception("MYSQL_OPT_WRITE_TIMEOUT failed");
+
     auto ret = mysql_real_connect(
-        tmp, config.host.c_str(), config.user.c_str(), config.passwd.c_str(),
-        config.default_database.c_str(), config.port,
-        config.unix_socket.empty() ? nullptr : config.unix_socket.c_str(),
+        tmp, config.host ? config.host.value().c_str() : nullptr,
+        config.user.c_str(), config.passwd.c_str(),
+        config.default_database ? config.default_database.value().c_str()
+                                : nullptr,
+        config.port ? config.port.value() : 0,
+        config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
         CLIENT_FOUND_ROWS);
     _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {
       mysql_close(ptr);
