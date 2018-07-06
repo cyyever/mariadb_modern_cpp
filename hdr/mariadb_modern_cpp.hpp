@@ -546,7 +546,7 @@ struct thread_setting {
   thread_setting() { mysql_thread_init(); }
   ~thread_setting() { mysql_thread_end(); }
 };
-void init_thread() { thread_local thread_setting setting; }
+inline void init_thread() { thread_local thread_setting setting; }
 
 class database {
 protected:
