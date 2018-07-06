@@ -27,6 +27,18 @@
 
 namespace mariadb {
 
+struct mariadb_config {
+  std::optional<std::string> host;
+  std::optional<unsigned int> port;
+  std::optional<std::string> unix_socket;
+  std::string user;
+  std::string passwd;
+  std::optional<std::string> default_database;
+  std::chrono::seconds connect_timeout{10};
+  std::chrono::seconds read_timeout{120};
+  std::chrono::seconds write_timeout{10};
+};
+
 template <typename Test, template <typename...> class Ref>
 struct is_specialization_of : std::false_type {};
 
@@ -57,18 +69,13 @@ template <typename T>
 struct is_mariadb_value<std::unique_ptr<T>>
     : public std::integral_constant<bool, is_mariadb_value<T>::value> {};
 
-class database;
-class database_binder;
-
-template <std::size_t> class binder;
-
-class database_binder {
+class statement_binder {
 
 public:
-  // database_binder is not copyable
-  database_binder() = delete;
-  database_binder(const database_binder &other) = delete;
-  database_binder &operator=(const database_binder &) = delete;
+  // statement_binder is not copyable
+  statement_binder() = delete;
+  statement_binder(const statement_binder &other) = delete;
+  statement_binder &operator=(const statement_binder &) = delete;
 
   void execute() {
     used(true);
@@ -201,8 +208,8 @@ private:
     }
   }
 
-  friend database_binder &append_string_argument(database_binder &db,
-                                                 const char *str, size_t size);
+  friend statement_binder &append_string_argument(statement_binder &db,
+                                                  const char *str, size_t size);
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
@@ -342,12 +349,12 @@ private:
   }
 
 public:
-  database_binder(std::shared_ptr<MYSQL> db, std::string sql)
+  statement_binder(std::shared_ptr<MYSQL> db, std::string sql)
       : _db(db), _sql(std::move(sql)), _unprepared_sql_part(_sql) {
     _reset();
   }
 
-  ~database_binder() noexcept(false) {
+  ~statement_binder() noexcept(false) {
     if (!used() && std::uncaught_exceptions() == 0) {
       execute();
       used(true);
@@ -364,7 +371,7 @@ public:
   template <typename Tuple, int Element = 0,
             bool Last = (std::tuple_size<Tuple>::value == Element)>
   struct tuple_iterate {
-    static void iterate(Tuple &t, database_binder &db) {
+    static void iterate(Tuple &t, statement_binder &db) {
       db._get_col_from_row(Element, std::get<Element>(t));
       tuple_iterate<Tuple, Element + 1>::iterate(t, db);
     }
@@ -372,7 +379,7 @@ public:
 
   template <typename Tuple, int Element>
   struct tuple_iterate<Tuple, Element, true> {
-    static void iterate(Tuple &, database_binder &) {}
+    static void iterate(Tuple &, statement_binder &) {}
   };
 
   template <typename... Types> void operator>>(std::tuple<Types...> &&values) {
@@ -398,7 +405,7 @@ public:
     template <typename Function, typename... Values,
               std::size_t Boundary = Count>
     static typename std::enable_if<(sizeof...(Values) < Boundary), void>::type
-    run(database_binder &db, Function &&function, Values &&... values) {
+    run(statement_binder &db, Function &&function, Values &&... values) {
       typename std::remove_cv<typename std::remove_reference<
           nth_argument_type<Function, sizeof...(Values)>>::type>::type value{};
       db._get_col_from_row(sizeof...(Values), value);
@@ -410,7 +417,7 @@ public:
     template <typename Function, typename... Values,
               std::size_t Boundary = Count>
     static typename std::enable_if<(sizeof...(Values) == Boundary), void>::type
-    run(database_binder &, Function &&function, Values &&... values) {
+    run(statement_binder &, Function &&function, Values &&... values) {
       function(std::move(values)...);
     }
   };
@@ -426,7 +433,7 @@ public:
 
   // Convert char* to string to trigger op<<(..., const std::string )
   template <std::size_t N>
-  inline database_binder &operator<<(const char (&STR)[N]) {
+  inline statement_binder &operator<<(const char (&STR)[N]) {
     return append_string_argument(STR, N - 1);
   }
 
@@ -435,7 +442,7 @@ public:
   typename std::enable_if<
       is_mariadb_value<typename std::remove_cv<
           typename std::remove_reference<Argument>::type>::type>::value,
-      database_binder &>::type
+      statement_binder &>::type
 
   operator<<(Argument &&val) {
     using raw_argument_type = typename std::remove_cv<
@@ -479,7 +486,7 @@ public:
     }
   }
 
-  database_binder &append_string_argument(const void *str, size_t size) {
+  statement_binder &append_string_argument(const void *str, size_t size) {
 
     if (_unprepared_sql_part.empty()) {
       throw exceptions::more_prepare_arguments(
@@ -504,24 +511,55 @@ public:
   }
 };
 
-struct mariadb_config {
-  std::optional<std::string> host;
-  std::optional<unsigned int> port;
-  std::optional<std::string> unix_socket;
-  std::string user;
-  std::string passwd;
-  std::optional<std::string> default_database;
-  std::chrono::seconds connect_timeout{10};
-  std::chrono::seconds read_timeout{120};
-  std::chrono::seconds write_timeout{10};
+class transaction_context final {
+public:
+  // transaction_context is not copyable
+  transaction_context() = delete;
+  transaction_context(const transaction_context &other) = delete;
+  transaction_context &operator=(const transaction_context &) = delete;
+
+  transaction_context(std::shared_ptr<MYSQL> db)
+      : _db(db), _transaction_statment(db, "begin;") {
+    _transaction_statment.execute();
+  }
+
+  ~transaction_context() {
+    if (std::uncaught_exceptions()) {
+      statement_binder(_db, "rollback;").execute();
+      return;
+    }
+
+    _transaction_statment.execute();
+    statement_binder(_db, "commit;").execute();
+  }
+
+  statement_binder &operator<<(const std::string &sql) {
+    return _transaction_statment << sql;
+  }
+
+private:
+  std::shared_ptr<MYSQL> _db;
+  statement_binder _transaction_statment;
 };
+
+struct thread_setting {
+  thread_setting() { mysql_thread_init(); }
+  ~thread_setting() { mysql_thread_end(); }
+};
+void init_thread() { thread_local thread_setting setting; }
 
 class database {
 protected:
   std::shared_ptr<MYSQL> _db;
 
 public:
-  database(const mariadb_config &config = {}) : _db(nullptr) {
+  // database is not copyable
+  database() = delete;
+  database(const database &other) = delete;
+  database &operator=(const database &) = delete;
+
+  database(const mariadb_config &config) : _db(nullptr) {
+    init_thread();
     MYSQL *tmp = mysql_init(nullptr);
     if (!tmp) {
       throw mariadb_exception("mysql_init failed");
@@ -557,10 +595,12 @@ public:
       throw exceptions::connection(_db.get());
   }
 
-  database(std::shared_ptr<MYSQL> db) : _db(db) {}
+  statement_binder operator<<(const std::string &sql) {
+    return statement_binder(_db, sql);
+  }
 
-  database_binder operator<<(const std::string &sql) {
-    return database_binder(_db, sql);
+  transaction_context get_transaction_context() {
+    return transaction_context(_db);
   }
 
   auto connection() const -> auto { return _db; }
@@ -568,11 +608,4 @@ public:
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
 };
 
-struct thread_setting {
-
-  thread_setting() { mysql_thread_init(); }
-
-  ~thread_setting() { mysql_thread_end(); }
-};
-inline thread_local thread_setting setting;
 } // namespace mariadb
