@@ -1,7 +1,7 @@
 /*!
- * \file cfg_test.cpp
+ * \file select_test.cpp
  *
- * \brief 测试cfg
+ * \date 2018-07-06
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <cmath>

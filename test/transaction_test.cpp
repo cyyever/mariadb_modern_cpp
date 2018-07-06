@@ -1,7 +1,6 @@
 /*!
  * \file transaction_test.cpp
  *
- * \author cyy
  * \date 2018-07-06
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN

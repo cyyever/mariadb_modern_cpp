@@ -1,7 +1,7 @@
 /*!
- * \file cfg_test.cpp
+ * \file concurrent_test.cpp
  *
- * \brief 测试cfg
+ * \date 2018-07-06
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <cmath>
@@ -14,7 +14,6 @@
 #include "../hdr/mariadb_modern_cpp.hpp"
 
 TEST_CASE("concurrent") {
-  // mysql_library_init(0, NULL, NULL);
 
   SUBCASE("insert_id") {
 
