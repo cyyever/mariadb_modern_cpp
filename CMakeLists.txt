@@ -12,6 +12,7 @@ target_include_directories(mariadb_modern_cpp INTERFACE
 )
 
 FIND_PATH(MARIADB_CONFIG_DIR mariadb_config PATHS /opt/bin /usr/bin /usr/local/bin)
+FIND_PATH(MYSQL_CONFIG_DIR mysql_config PATHS /opt/bin /usr/bin /usr/local/bin)
 IF(MARIADB_CONFIG_DIR)
   EXEC_PROGRAM(${MARIADB_CONFIG_DIR}/mariadb_config
     ARGS "--include"
@@ -23,8 +24,19 @@ IF(MARIADB_CONFIG_DIR)
     OUTPUT_VARIABLE MARIADB_LIBS)
   separate_arguments(MARIADB_LIBS)
   TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE ${MARIADB_LIBS})
+ELSEIF(MYSQL_CONFIG_DIR)
+  EXEC_PROGRAM(${MYSQL_CONFIG_DIR}/mysql_config
+    ARGS "--include"
+    OUTPUT_VARIABLE MYSQL_INCLUDE_DIR)
+  separate_arguments(MYSQL_INCLUDE_DIR)
+  target_compile_options(mariadb_modern_cpp INTERFACE ${MYSQL_INCLUDE_DIR})
+  EXEC_PROGRAM(${MYSQL_CONFIG_DIR}/mysql_config
+    ARGS "--libs_r"
+    OUTPUT_VARIABLE MYSQL_LIBS)
+  separate_arguments(MYSQL_LIBS)
+  TARGET_LINK_LIBRARIES(mariadb_modern_cpp INTERFACE ${MYSQL_LIBS})
 ELSE()
-  message(FATAL_ERROR "no mariadb C library found")
+  message(FATAL_ERROR "no mysql/mariadb C library found")
 ENDIF()
 
 option(BUILD_TEST "Build tests" OFF)
