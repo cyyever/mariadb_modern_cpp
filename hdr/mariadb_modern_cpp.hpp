@@ -564,6 +564,9 @@ public:
     if (!tmp) {
       throw mariadb_exception("mysql_init failed");
     }
+    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {
+      mysql_close(ptr);
+    }); // this will close the connection eventually when no longer needed.
 
     unsigned int seconds_count = config.connect_timeout.count();
     auto res = mysql_options(tmp, MYSQL_OPT_CONNECT_TIMEOUT, &seconds_count);
@@ -588,9 +591,6 @@ public:
         config.port ? config.port.value() : 0,
         config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
         CLIENT_FOUND_ROWS);
-    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {
-      mysql_close(ptr);
-    }); // this will close the connection eventually when no longer needed.
     if (!ret)
       throw exceptions::connection(_db.get());
   }
