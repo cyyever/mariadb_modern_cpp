@@ -9,14 +9,10 @@
 #include <doctest.h>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
+#include "test_config.hpp"
 
 TEST_CASE("select") {
-  mariadb::mariadb_config config;
-  config.host = "127.0.0.1";
-  config.user = "mariadb_modern_cpp_test";
-  config.passwd = "123";
-  config.default_database = "mariadb_modern_cpp_test";
-  mariadb::database test_db(config);
+  mariadb::database test_db(get_test_config());
 
   SUBCASE("select without argument") {
     test_db << "select * from mariadb_modern_cpp_test.col_type_test;";
@@ -203,7 +199,7 @@ TEST_CASE("select") {
   }
 
   SUBCASE("extract NULL") {
-    std::optional<std::string> val;
+    std::optional<std::string> val("has a value");
 
     test_db << "select null_col from mariadb_modern_cpp_test.col_type_test "
                "where id=?;"
@@ -336,7 +332,7 @@ TEST_CASE("select") {
       test_db << "select count(*) from "
                  "mariadb_modern_cpp_test.col_type_test;select count(*) from "
                  "mariadb_modern_cpp_test.col_type_test;";
-    } catch (const mariadb::mariadb_exception &e) {
+    } catch (const mariadb::mariadb_exception &) {
       has_exception = true;
     }
     CHECK(has_exception);

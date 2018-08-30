@@ -227,6 +227,7 @@ private:
 
     if constexpr (is_specialization_of<Result, std::optional>::value) {
       if (!row[idx]) {
+        val.reset();
         return;
       } else {
         typename Result::value_type real_value;
@@ -266,9 +267,9 @@ private:
 
         errno = 0;
         if (field_flags & UNSIGNED_FLAG) {
-          val = ::strtoull(row[idx], nullptr, 10);
+          val = static_cast<Result>(::strtoull(row[idx], nullptr, 10));
         } else {
-          val = ::strtoll(row[idx], nullptr, 10);
+          val = static_cast<Result>(::strtoll(row[idx], nullptr, 10));
         }
         if (errno != 0) {
           throw exceptions::column_conversion(
@@ -542,6 +543,12 @@ private:
   statement_binder _transaction_statment;
 };
 
+struct library_initer {
+  library_initer() { mysql_library_init(0, nullptr, nullptr); }
+  ~library_initer() { mysql_library_end(); }
+};
+inline void init_library() { static library_initer initer; }
+
 struct thread_setting {
   thread_setting() { mysql_thread_init(); }
   ~thread_setting() { mysql_thread_end(); }
@@ -559,6 +566,7 @@ public:
   database &operator=(const database &) = delete;
 
   database(const mariadb_config &config) : _db(nullptr) {
+    init_library();
     init_thread();
     MYSQL *tmp = mysql_init(nullptr);
     if (!tmp) {
@@ -568,17 +576,18 @@ public:
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
 
-    unsigned int seconds_count = config.connect_timeout.count();
+    unsigned int seconds_count =
+        static_cast<unsigned int>(config.connect_timeout.count());
     auto res = mysql_options(tmp, MYSQL_OPT_CONNECT_TIMEOUT, &seconds_count);
     if (res != 0)
       throw mariadb_exception("MYSQL_OPT_CONNECT_TIMEOUT failed");
 
-    seconds_count = config.read_timeout.count();
+    seconds_count = static_cast<unsigned int>(config.read_timeout.count());
     res = mysql_options(tmp, MYSQL_OPT_READ_TIMEOUT, &seconds_count);
     if (res != 0)
       throw mariadb_exception("MYSQL_OPT_READ_TIMEOUT failed");
 
-    seconds_count = config.write_timeout.count();
+    seconds_count = static_cast<unsigned int>(config.write_timeout.count());
     res = mysql_options(tmp, MYSQL_OPT_WRITE_TIMEOUT, &seconds_count);
     if (res != 0)
       throw mariadb_exception("MYSQL_OPT_WRITE_TIMEOUT failed");

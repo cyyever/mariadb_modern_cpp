@@ -21,7 +21,7 @@ public:
   mariadb_exception(std::string msg, std::string sql = "")
       : runtime_error(
             msg + (sql.empty() ? "" : (std::string(" \nerror sql :") + sql))),
-        _sql(std::move(sql)), _errno(errno) {}
+        _sql(std::move(sql)) {}
 
   mariadb_exception(MYSQL *mysql, std::string sql = "")
       : mariadb_exception(mysql_error(mysql), std::move(sql)) {

@@ -12,17 +12,11 @@
 #include <thread>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
+#include "test_config.hpp"
 
 TEST_CASE("concurrent") {
 
   SUBCASE("insert_id") {
-
-    mariadb::mariadb_config config;
-    config.host = "127.0.0.1";
-    config.user = "mariadb_modern_cpp_test";
-    config.passwd = "123";
-    config.default_database = "mariadb_modern_cpp_test";
-
     std::vector<std::thread> thds;
     std::mutex test_mutex;
 
@@ -30,9 +24,9 @@ TEST_CASE("concurrent") {
 
     for (int i = 0; i < 8; i++) {
 
-      thds.emplace_back([&config, &test_mutex, &has_exception, i]() {
+      thds.emplace_back([&test_mutex, &has_exception, i]() {
         try {
-          mariadb::database test_db(config);
+          mariadb::database test_db(get_test_config());
 
           auto table_name = std::string("mariadb_modern_cpp_test.tmp_table") +
                             std::to_string(i);
