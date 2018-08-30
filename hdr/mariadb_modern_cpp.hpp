@@ -213,7 +213,7 @@ private:
 
   template <typename Result>
   typename std::enable_if<is_mariadb_value<Result>::value, void>::type
-  _get_col_from_row(unsigned int idx, Result &val, bool check_null = true) {
+  _get_col_from_row(unsigned int idx, Result &val) {
 
     if (idx >= field_count) {
       throw exceptions::out_of_row_range(
@@ -231,23 +231,22 @@ private:
         return;
       } else {
         typename Result::value_type real_value;
-        _get_col_from_row(idx, real_value, false);
+        _get_col_from_row(idx, real_value);
         val = std::move(real_value);
         return;
       }
     } else if constexpr (is_specialization_of<Result, std::unique_ptr>::value) {
       if (!row[idx]) {
+        val.reset();
         return;
       } else {
         typename Result::element_type real_value;
-        _get_col_from_row(idx, real_value, false);
+        _get_col_from_row(idx, real_value);
         val = std::make_unique<typename Result::element_type>(
             std::move(real_value));
         return;
       }
-    }
-
-    if (check_null) {
+    } else {
       if (!row[idx]) {
         throw exceptions::can_not_hold_null(
             std::string("column ") + std::to_string(idx) +
@@ -526,12 +525,15 @@ public:
 
   ~transaction_context() {
     if (std::uncaught_exceptions()) {
-      statement_binder(_db, "rollback;").execute();
+      _db.reset();
       return;
     }
-
-    _transaction_statment.execute();
-    statement_binder(_db, "commit;").execute();
+    try {
+      _transaction_statment.execute();
+      statement_binder(_db, "commit;").execute();
+    } catch (...) {
+      _db.reset();
+    }
   }
 
   statement_binder &operator<<(const std::string &sql) {
