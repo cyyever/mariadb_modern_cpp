@@ -10,6 +10,7 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
+#include <atomic>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
 #include "test_config.hpp"
@@ -20,7 +21,7 @@ TEST_CASE("concurrent") {
     std::vector<std::thread> thds;
     std::mutex test_mutex;
 
-    bool has_exception = false;
+    std::atomic<bool> has_exception = false;
 
     for (int i = 0; i < 8; i++) {
 
