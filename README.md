@@ -143,22 +143,33 @@ try {
 
 Transactions
 ----
-You can use transactions with `begin;`, `commit;` and `rollback;` commands.
+All sql statements executed in a transaction context are commited as a transaction when the context is destructed,but if an exception is thrown,the transaction is canceled.
 
 ```c++
-db << "begin;"; // begin a transaction ...   
-db << "insert into user (age,name,weight) values (?,?,?);"
-   << 20
-   << "bob"
-   << 83.25f;
-db << "commit;"; // commit all the changes.
+{
+  auto ctx = db.get_transaction_context();
+  db << "insert into user (age,name,weight) values (?,?,?);"
+     << 20
+     << "bob"
+     << 83.25f;
+  db << "insert into user (age,name,weight) values (?,?,?);"
+     << 19
+     << "chirs"
+     << 82.7;
+}
 
-db << "begin;"; // begin another transaction ....
-db << "insert into user (age,name,weight) values (?,?,?);" 
-   << 19
-   << "chirs"
-   << 82.7;
-db << "rollback;"; // cancel this transaction ...
+{
+  auto ctx = db.get_transaction_context();
+  db << "insert into user (age,name,weight) values (?,?,?);"
+     << 20
+     << "bob"
+     << 83.25f;
+  db << "insert into user (age,name,weight) values (?,?,?);"
+     << 19
+     << "chirs"
+     << 82.7;
+  throw std::runtime_error("Transaction will be canceled");
+}
 
 ```
 
