@@ -4,13 +4,13 @@
  * \date 2018-07-06
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <doctest.h>
 #include <iostream>
 #include <mutex>
 #include <thread>
-#include <atomic>
 
 #include "../hdr/mariadb_modern_cpp.hpp"
 #include "test_config.hpp"
