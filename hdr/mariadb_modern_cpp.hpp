@@ -594,16 +594,21 @@ public:
     if (res != 0)
       throw mariadb_exception("MYSQL_OPT_WRITE_TIMEOUT failed");
 
-    auto ret = mysql_real_connect(
-        tmp, config.host ? config.host.value().c_str() : nullptr,
-        config.user.c_str(), config.passwd.c_str(),
-        config.default_database ? config.default_database.value().c_str()
-                                : nullptr,
-        config.port ? config.port.value() : 0,
-        config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
-        CLIENT_FOUND_ROWS);
-    if (!ret)
-      throw exceptions::connection(_db.get());
+    {
+      // mysql_real_connect is not thread safe,so we use mutex to protect
+      static std::mutex connect_mtx;
+      std::lock_guard lk(connect_mtx);
+      auto ret = mysql_real_connect(
+          tmp, config.host ? config.host.value().c_str() : nullptr,
+          config.user.c_str(), config.passwd.c_str(),
+          config.default_database ? config.default_database.value().c_str()
+                                  : nullptr,
+          config.port ? config.port.value() : 0,
+          config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
+          CLIENT_FOUND_ROWS);
+      if (!ret)
+        throw exceptions::connection(_db.get());
+    }
   }
 
   statement_binder operator<<(const std::string &sql) {
@@ -617,6 +622,6 @@ public:
   auto connection() const -> auto { return _db; }
 
   my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
-};
+}; // namespace mariadb
 
 } // namespace mariadb
