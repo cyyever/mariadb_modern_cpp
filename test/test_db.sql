@@ -3,6 +3,8 @@ create database if not exists mariadb_modern_cpp_test;
 GRANT ALL PRIVILEGES ON mariadb_modern_cpp_test.* TO 'mariadb_modern_cpp_test'@'%' IDENTIFIED BY '123';
 flush privileges;
 
+SET GLOBAL auto_increment_increment=1;
+
 create table if not exists mariadb_modern_cpp_test.col_type_test (
   id BIGINT PRIMARY KEY AUTO_INCREMENT NOT NULL,
   int_col BIGINT NOT NULL,
@@ -18,4 +20,4 @@ create table if not exists mariadb_modern_cpp_test.col_type_test (
   null_col LONGTEXT
 );
 
-insert into mariadb_modern_cpp_test.col_type_test(int_col,uint_col,dec_col,udec_col,double_col,udouble_col,varchar_col,char_col,longtext_col,longblob_col,null_col) values(-1,1,-0.3,0.3,-0.3,0.3,"varchar","char","longtext","longblob",NULL);
+insert into mariadb_modern_cpp_test.col_type_test(id,int_col,uint_col,dec_col,udec_col,double_col,udouble_col,varchar_col,char_col,longtext_col,longblob_col,null_col) values(1,-1,1,-0.3,0.3,-0.3,0.3,"varchar","char","longtext","longblob",NULL);
