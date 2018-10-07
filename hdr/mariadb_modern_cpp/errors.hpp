@@ -27,8 +27,8 @@ public:
       : mariadb_exception(mysql_error(mysql), std::move(sql)) {
     _errno = mysql_errno(mysql);
   }
-  const std::string &get_sql() const { return _sql; }
-  auto get_errno() const -> auto { return _errno; }
+  const std::string &get_sql() const noexcept { return _sql; }
+  auto get_errno() const noexcept -> auto { return _errno; }
 
 private:
   std::string _sql{};

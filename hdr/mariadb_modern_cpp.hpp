@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -107,7 +108,7 @@ public:
     }
     execution_started = state;
   }
-  bool used() const { return execution_started; }
+  bool used() const noexcept { return execution_started; }
 
 private:
   std::shared_ptr<MYSQL> _db;
@@ -128,7 +129,7 @@ private:
   }
 
   void _consume_prepared_sql_part() {
-    auto pos = _unprepared_sql_part.find('?');
+    const auto pos = _unprepared_sql_part.find('?');
     if (pos == _unprepared_sql_part.npos) {
       _full_sql.append(_unprepared_sql_part.data(),
                        _unprepared_sql_part.size());
@@ -145,7 +146,7 @@ private:
     }
 
     auto result_set = std::shared_ptr<MYSQL_RES>(mysql_store_result(_db.get()),
-                                                 [this](MYSQL_RES *ptr) {
+                                                 [this](MYSQL_RES *ptr) noexcept {
                                                    row = {};
                                                    fields = {};
                                                    field_count = {};
@@ -157,7 +158,7 @@ private:
           "no result sets to extract: exactly 1 result set expected", sql());
     }
 
-    auto row_num = mysql_num_rows(result_set.get());
+    const auto row_num = mysql_num_rows(result_set.get());
     for (size_t i = 0; i < row_num; i++) {
       row = mysql_fetch_row(result_set.get());
       lengths = mysql_fetch_lengths(result_set.get());
@@ -177,7 +178,7 @@ private:
     }
 
     auto result_set = std::shared_ptr<MYSQL_RES>(mysql_store_result(_db.get()),
-                                                 [this](MYSQL_RES *ptr) {
+                                                 [this](MYSQL_RES *ptr) noexcept {
                                                    row = {};
                                                    fields = {};
                                                    field_count = {};
@@ -189,7 +190,7 @@ private:
           "no result sets to extract: exactly 1 result set expected", sql());
     }
 
-    auto row_num = mysql_num_rows(result_set.get());
+    const auto row_num = mysql_num_rows(result_set.get());
     if (row_num == 0) {
       throw exceptions::no_rows("no rows to extract: exactly 1 row expected",
                                 sql());
@@ -222,8 +223,7 @@ private:
           sql());
     }
 
-    auto field_type = fields[idx].type;
-    auto field_flags = fields[idx].flags;
+    const auto field_type = fields[idx].type;
 
     if constexpr (is_specialization_of<Result, std::optional>::value) {
       if (!row[idx]) {
@@ -265,7 +265,7 @@ private:
       if constexpr (std::is_integral_v<Result>) {
 
         errno = 0;
-        if (field_flags & UNSIGNED_FLAG) {
+        if (fields[idx].flags & UNSIGNED_FLAG) {
           val = static_cast<Result>(::strtoull(row[idx], nullptr, 10));
         } else {
           val = static_cast<Result>(::strtoll(row[idx], nullptr, 10));
@@ -354,10 +354,13 @@ public:
     _reset();
   }
 
-  ~statement_binder() noexcept(false) {
+  ~statement_binder() noexcept {
     if (!used() && std::uncaught_exceptions() == 0) {
+      try {
       execute();
       used(true);
+      } catch(...) {
+      }
     }
   }
 
@@ -494,7 +497,7 @@ public:
     }
 
     std::string escaped_str(size * 2 + 1, '\0');
-    auto real_size = mysql_real_escape_string(
+    auto const real_size = mysql_real_escape_string(
         _db.get(), escaped_str.data(), static_cast<const char *>(str), size);
     escaped_str.resize(real_size);
 
@@ -546,16 +549,16 @@ private:
 };
 
 struct library_initer {
-  library_initer() { mysql_library_init(0, nullptr, nullptr); }
-  ~library_initer() { mysql_library_end(); }
+  library_initer() noexcept { mysql_library_init(0, nullptr, nullptr); }
+  ~library_initer() noexcept { mysql_library_end(); }
 };
-inline void init_library() { static library_initer initer; }
+inline void init_library() noexcept { static library_initer initer; }
 
 struct thread_setting {
-  thread_setting() { mysql_thread_init(); }
-  ~thread_setting() { mysql_thread_end(); }
+  thread_setting() noexcept { mysql_thread_init(); }
+  ~thread_setting() noexcept { mysql_thread_end(); }
 };
-inline void init_thread() { thread_local thread_setting setting; }
+inline void init_thread() noexcept { thread_local thread_setting setting; }
 
 class database {
 protected:
@@ -574,7 +577,7 @@ public:
     if (!tmp) {
       throw mariadb_exception("mysql_init failed");
     }
-    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) {
+    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) noexcept {
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
 
@@ -598,16 +601,16 @@ public:
       // mysql_real_connect is not thread safe,so we use mutex to protect
       static std::mutex connect_mtx;
       std::lock_guard lk(connect_mtx);
-      auto ret = mysql_real_connect(
+      if (!mysql_real_connect(
           tmp, config.host ? config.host.value().c_str() : nullptr,
           config.user.c_str(), config.passwd.c_str(),
           config.default_database ? config.default_database.value().c_str()
                                   : nullptr,
           config.port ? config.port.value() : 0,
           config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
-          CLIENT_FOUND_ROWS);
-      if (!ret)
+          CLIENT_FOUND_ROWS)) {
         throw exceptions::connection(_db.get());
+      }
     }
   }
 
@@ -619,9 +622,9 @@ public:
     return transaction_context(_db);
   }
 
-  auto connection() const -> auto { return _db; }
+  auto connection() const noexcept -> auto { return _db; }
 
-  my_ulonglong insert_id() const { return mysql_insert_id(_db.get()); }
+  my_ulonglong insert_id() const noexcept { return mysql_insert_id(_db.get()); }
 }; // namespace mariadb
 
 } // namespace mariadb
