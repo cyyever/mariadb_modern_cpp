@@ -145,13 +145,13 @@ private:
       execute();
     }
 
-    auto result_set = std::shared_ptr<MYSQL_RES>(mysql_store_result(_db.get()),
-                                                 [this](MYSQL_RES *ptr) noexcept {
-                                                   row = {};
-                                                   fields = {};
-                                                   field_count = {};
-                                                   mysql_free_result(ptr);
-                                                 });
+    auto result_set = std::shared_ptr<MYSQL_RES>(
+        mysql_store_result(_db.get()), [this](MYSQL_RES * ptr) noexcept {
+          row = {};
+          fields = {};
+          field_count = {};
+          mysql_free_result(ptr);
+        });
 
     if (!result_set) {
       throw exceptions::no_result_sets(
@@ -177,13 +177,13 @@ private:
       execute();
     }
 
-    auto result_set = std::shared_ptr<MYSQL_RES>(mysql_store_result(_db.get()),
-                                                 [this](MYSQL_RES *ptr) noexcept {
-                                                   row = {};
-                                                   fields = {};
-                                                   field_count = {};
-                                                   mysql_free_result(ptr);
-                                                 });
+    auto result_set = std::shared_ptr<MYSQL_RES>(
+        mysql_store_result(_db.get()), [this](MYSQL_RES * ptr) noexcept {
+          row = {};
+          fields = {};
+          field_count = {};
+          mysql_free_result(ptr);
+        });
 
     if (!result_set) {
       throw exceptions::no_result_sets(
@@ -354,13 +354,10 @@ public:
     _reset();
   }
 
-  ~statement_binder() noexcept {
+  ~statement_binder() noexcept(false) {
     if (!used() && std::uncaught_exceptions() == 0) {
-      try {
       execute();
       used(true);
-      } catch(...) {
-      }
     }
   }
 
@@ -526,7 +523,7 @@ public:
     _transaction_statment.execute();
   }
 
-  ~transaction_context() {
+  ~transaction_context() noexcept {
     if (std::uncaught_exceptions()) {
       _db.reset();
       return;
@@ -577,7 +574,7 @@ public:
     if (!tmp) {
       throw mariadb_exception("mysql_init failed");
     }
-    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL *ptr) noexcept {
+    _db = std::shared_ptr<MYSQL>(tmp, [=](MYSQL * ptr) noexcept {
       mysql_close(ptr);
     }); // this will close the connection eventually when no longer needed.
 
@@ -602,13 +599,13 @@ public:
       static std::mutex connect_mtx;
       std::lock_guard lk(connect_mtx);
       if (!mysql_real_connect(
-          tmp, config.host ? config.host.value().c_str() : nullptr,
-          config.user.c_str(), config.passwd.c_str(),
-          config.default_database ? config.default_database.value().c_str()
-                                  : nullptr,
-          config.port ? config.port.value() : 0,
-          config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
-          CLIENT_FOUND_ROWS)) {
+              tmp, config.host ? config.host.value().c_str() : nullptr,
+              config.user.c_str(), config.passwd.c_str(),
+              config.default_database ? config.default_database.value().c_str()
+                                      : nullptr,
+              config.port ? config.port.value() : 0,
+              config.unix_socket ? config.unix_socket.value().c_str() : nullptr,
+              CLIENT_FOUND_ROWS)) {
         throw exceptions::connection(_db.get());
       }
     }
